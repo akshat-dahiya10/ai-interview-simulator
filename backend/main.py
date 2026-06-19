@@ -17,8 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# GROQ client
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# 👇 client ko function me shift kar diya
+def get_client():
+    return Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 class RoleRequest(BaseModel):
     role: str
@@ -34,6 +35,8 @@ def root():
 # Generate Question
 @app.post("/generate-question")
 def generate_question(data: RoleRequest):
+    client = get_client()
+
     prompt = f"Generate a technical interview question for a {data.role} developer."
 
     try:
@@ -52,6 +55,8 @@ def generate_question(data: RoleRequest):
 # Evaluate Answer
 @app.post("/evaluate-answer")
 def evaluate_answer(data: AnswerRequest):
+    client = get_client()
+
     prompt = f"""
     Question: {data.question}
     Answer: {data.answer}
