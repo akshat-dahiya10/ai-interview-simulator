@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   const { question, answer } = await req.json();
 
-  const res = await fetch("http://127.0.0.1:8000/evaluate-answer", {
+  const res = await fetch("https://ai-interview-simulator-production-3414.up.railway.app/evaluate-answer", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
