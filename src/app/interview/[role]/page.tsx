@@ -13,7 +13,7 @@ export default function Page({
 
   const { role } = params;
 
-  if (!isValidRole(role)) return notFound();
+  return <div>ROLE WORKING: {role}</div>;
 
   const roleData = getRole(role);
 
