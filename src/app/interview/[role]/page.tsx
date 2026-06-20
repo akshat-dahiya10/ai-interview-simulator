@@ -9,9 +9,9 @@ export default function Page({
 }: {
   params: { role: string };
 }) {
-  const { role } = params;
+  const roleId = params.role.toLowerCase().trim();
 
-  const roleData = getRole(role);
+  const roleData = getRole(roleId);
 
   if (!roleData) {
     notFound();
