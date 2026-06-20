@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getRole, isValidRole } from "@/lib/data";
 import InterviewRoom from "@/components/interview/InterviewRoom";
+console.log("ROLE:", params.role);
 
 export const dynamic = "force-dynamic";
 
