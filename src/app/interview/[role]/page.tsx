@@ -11,11 +11,11 @@ export default function Page({
 }) {
   const { role } = params;
 
-  console.log("ROLE:", role);
-
   const roleData = getRole(role);
 
-  if (!roleData) return notFound();
+  if (!roleData) {
+    notFound();
+  }
 
-  return <InterviewRoom role={roleData!} />;
+  return <InterviewRoom role={roleData} />;
 }
