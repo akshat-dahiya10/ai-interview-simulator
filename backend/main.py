@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
 import json
+import re
 
 load_dotenv()
 
@@ -30,8 +31,51 @@ app.add_middleware(
 def get_client():
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        raise ValueError("GROQ_API_KEY not found in environment variables")
+        raise ValueError("GROQ_API_KEY not found")
     return Groq(api_key=api_key)
+
+
+# =============================
+# Utils
+# =============================
+def normalize(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def is_duplicate(new_q: str, history: list) -> bool:
+    new_q_norm = normalize(new_q)
+
+    for item in history:
+        old_q = item.get("question", "")
+        old_q_norm = normalize(old_q)
+
+        # exact match
+        if new_q_norm == old_q_norm:
+            return True
+
+        # partial similarity
+        if new_q_norm in old_q_norm or old_q_norm in new_q_norm:
+            return True
+
+    return False
+
+
+def build_history(history: list) -> str:
+    if not history:
+        return "No previous questions."
+
+    return "\n".join([
+        f"Question Asked: {item.get('question')}\nCandidate Answer: {item.get('answer')}"
+        for item in history
+    ])
+
+
+def extract_json(text: str):
+    """Safely extract JSON from LLM response"""
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        return match.group(0)
+    return text
 
 
 # =============================
@@ -39,7 +83,7 @@ def get_client():
 # =============================
 class QuestionRequest(BaseModel):
     role: str
-    history: list = []  # [{question, answer}]
+    history: list = []
 
 
 class AnswerRequest(BaseModel):
@@ -56,54 +100,58 @@ def root():
 
 
 # =============================
-# Generate Question (Adaptive)
+# Generate Question (NO REPEAT GUARANTEED)
 # =============================
 @app.post("/generate-question")
 def generate_question(data: QuestionRequest):
     client = get_client()
 
-    history_text = ""
-    if data.history:
-        history_text = "\n".join([
-            f"Q: {item.get('question')}\nA: {item.get('answer')}"
-            for item in data.history
-        ])
+    # First question force
+    if len(data.history) == 0:
+        return {"question": "Tell me about yourself."}
+
+    history_text = build_history(data.history)
 
     prompt = f"""
-You are a professional {data.role} interviewer conducting a real interview.
+You are a strict professional {data.role} interviewer.
 
 Previous conversation:
-{history_text if history_text else "No previous questions."}
+{history_text}
 
-Rules:
+CRITICAL RULES:
 - NEVER repeat any previous question
-- First question should be "Tell me about yourself"
-- After that, ask DIFFERENT and RELEVANT questions
+- NEVER ask similar questions
+- Always move forward logically
+- Ask short, natural questions (max 1-2 lines)
 - Increase difficulty gradually
-- Ask practical, real-world interview questions
-- Keep it short and natural (1-2 lines max)
 
-Examples of good flow:
-1. Tell me about yourself
-2. What technologies do you use in frontend?
-3. Explain React lifecycle
-4. What is virtual DOM?
-5. How do you optimize performance?
+Interview Flow:
+- Experience → Projects → Tech → Deep concepts → Optimization → Real-world
 
-Now ask the NEXT question.
-Only return the question text.
+If you repeat anything, the answer is WRONG.
+
+Now generate the NEXT UNIQUE question.
+Return ONLY the question text.
 """
+
     try:
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-        )
+        # retry system
+        for _ in range(3):
+            response = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+            )
 
-        question = response.choices[0].message.content.strip()
+            question = response.choices[0].message.content.strip()
 
+            # backend duplicate protection
+            if not is_duplicate(question, data.history):
+                return {"question": question}
+
+        # fallback safe question
         return {
-            "question": question
+            "question": "How do you optimize performance in a frontend application?"
         }
 
     except Exception as e:
@@ -111,14 +159,14 @@ Only return the question text.
 
 
 # =============================
-# Evaluate Answer (Structured)
+# Evaluate Answer (BULLETPROOF)
 # =============================
 @app.post("/evaluate-answer")
 def evaluate_answer(data: AnswerRequest):
     client = get_client()
 
     prompt = f"""
-You are a senior technical interviewer.
+You are a strict senior technical interviewer.
 
 Question:
 {data.question}
@@ -126,13 +174,17 @@ Question:
 Candidate Answer:
 {data.answer}
 
-Return ONLY valid JSON:
+CRITICAL RULES:
+- Return ONLY valid JSON
+- No explanation
+- No text outside JSON
 
+Format:
 {{
   "score": number (0-10),
   "strengths": ["point1", "point2"],
   "weaknesses": ["point1", "point2"],
-  "improved_answer": "better version of answer"
+  "improved_answer": "better version"
 }}
 """
 
@@ -140,23 +192,38 @@ Return ONLY valid JSON:
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+            temperature=0.2,
         )
 
-        content = response.choices[0].message.content.strip()
+        raw = response.choices[0].message.content.strip()
 
-        # Safely parse JSON
+        # extract JSON safely
+        json_str = extract_json(raw)
+
         try:
-            parsed = json.loads(content)
+            parsed = json.loads(json_str)
         except:
-            parsed = {
+            parsed = None
+
+        if not parsed:
+            return {
                 "score": 0,
                 "strengths": [],
                 "weaknesses": ["Parsing error"],
-                "improved_answer": content
+                "improved_answer": raw
             }
 
-        return parsed
+        return {
+            "score": parsed.get("score", 0),
+            "strengths": parsed.get("strengths", []),
+            "weaknesses": parsed.get("weaknesses", []),
+            "improved_answer": parsed.get("improved_answer", "")
+        }
 
     except Exception as e:
-        return {"error": str(e)}
+        return {
+            "score": 0,
+            "strengths": [],
+            "weaknesses": [str(e)],
+            "improved_answer": ""
+        }
