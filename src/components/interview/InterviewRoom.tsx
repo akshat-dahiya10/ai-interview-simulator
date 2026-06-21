@@ -21,8 +21,10 @@ export default function InterviewRoom({ role }: { role: Role }) {
   const [elapsed, setElapsed] = useState(0);
   const [complete, setComplete] = useState(false);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // ✅ NEW: proper history state
+  const [historyState, setHistoryState] = useState<any[]>([]);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<any[]>([]);
   const currentQuestionRef = useRef<string>("");
 
@@ -40,7 +42,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
   };
 
   // =============================
-  // PUSH AI MESSAGE
+  // AI MESSAGE
   // =============================
   const pushAi = (text: string, delay = 0) => {
     setTyping(true);
@@ -61,6 +63,16 @@ export default function InterviewRoom({ role }: { role: Role }) {
   };
 
   // =============================
+  // DUPLICATE CHECK
+  // =============================
+  const isDuplicate = (q: string) => {
+    return historyRef.current.some(
+      (item) =>
+        item.question.toLowerCase().trim() === q.toLowerCase().trim()
+    );
+  };
+
+  // =============================
   // GENERATE QUESTION
   // =============================
   const generateQuestion = async () => {
@@ -75,7 +87,14 @@ export default function InterviewRoom({ role }: { role: Role }) {
       });
 
       const data = await res.json();
-      return data.question || "Explain your recent project.";
+      let q = data.question || "Explain your recent project.";
+
+      // ✅ frontend protection
+      if (isDuplicate(q)) {
+        return "What challenges did you face in your project?";
+      }
+
+      return q;
     } catch (err) {
       console.error(err);
       return "Explain your recent project.";
@@ -104,16 +123,24 @@ export default function InterviewRoom({ role }: { role: Role }) {
   };
 
   // =============================
-  // START INTERVIEW (FIXED FIRST Q)
+  // START INTERVIEW
   // =============================
   useEffect(() => {
     const firstQ = "Tell me about yourself.";
     currentQuestionRef.current = firstQ;
 
-    pushAi(
-      `Welcome to ${role.title} interview.\n\n${firstQ}`,
-      800
-    );
+    // ✅ FIX: add first question to history
+    const initialHistory = [
+      {
+        question: firstQ,
+        answer: "",
+      },
+    ];
+
+    historyRef.current = initialHistory;
+    setHistoryState(initialHistory);
+
+    pushAi(`Welcome to ${role.title} interview.\n\n${firstQ}`, 800);
   }, []);
 
   // =============================
@@ -134,7 +161,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
     const text = input.trim();
     if (!text || typing || complete) return;
 
-    // user message
+    // USER MESSAGE
     setMessages((prev) => [
       ...prev,
       {
@@ -147,13 +174,26 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
     setInput("");
 
+    const currentQ = currentQuestionRef.current;
+
     // =============================
-    // 1. EVALUATION
+    // SAVE HISTORY FIRST (IMPORTANT)
     // =============================
-    const feedback = await evaluateAnswer(
-      currentQuestionRef.current,
-      text
-    );
+    const updatedHistory = [
+      ...historyRef.current,
+      {
+        question: currentQ,
+        answer: text,
+      },
+    ];
+
+    historyRef.current = updatedHistory;
+    setHistoryState(updatedHistory);
+
+    // =============================
+    // EVALUATION
+    // =============================
+    const feedback = await evaluateAnswer(currentQ, text);
 
     if (feedback) {
       pushAi(
@@ -171,19 +211,15 @@ ${feedback.improved_answer}`,
       );
     }
 
-    // save history
-    historyRef.current.push({
-      question: currentQuestionRef.current,
-      answer: text,
-    });
-
     // =============================
-    // 2. NEXT QUESTION
+    // NEXT QUESTION
     // =============================
     const nextQ = await generateQuestion();
     currentQuestionRef.current = nextQ;
 
-    pushAi(nextQ, THINK_MS + 800);
+    setTimeout(() => {
+      pushAi(nextQ);
+    }, 1500);
 
     // =============================
     // COMPLETE AFTER 5 Q
@@ -209,7 +245,7 @@ ${feedback.improved_answer}`,
       <div className="hidden lg:block">
         <Sidebar
           role={role}
-          current={historyRef.current.length}
+          current={historyState.length}
           total={5}
           elapsed={elapsed}
         />
