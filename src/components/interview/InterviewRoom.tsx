@@ -10,9 +10,8 @@ import {
 import { ArrowRight } from "lucide-react";
 import type { ChatMessage, Role } from "@/lib/types";
 import ChatBubble from "@/components/chat/ChatBubble";
-import Sidebar from "@/components/layout/Sidebar";
 
-const THINK_MS = 1200;
+const THINK_MS = 800;
 
 export default function InterviewRoom({ role }: { role: Role }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -22,10 +21,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
   const [difficulty, setDifficulty] = useState("medium");
   const [elapsed, setElapsed] = useState(0);
   const [complete, setComplete] = useState(false);
-  const [historyState, setHistoryState] = useState<any[]>([]);
-  const [isListening, setIsListening] = useState(false);
 
-  const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<any[]>([]);
   const currentQuestionRef = useRef<string>("");
@@ -34,61 +30,48 @@ export default function InterviewRoom({ role }: { role: Role }) {
     process.env.NEXT_PUBLIC_BACKEND_URL ||
     "https://ai-interview-simulator-production-10.up.railway.app";
 
-  const speakText = (text: string) => {
-    const speech = new SpeechSynthesisUtterance(text);
-    speech.lang = "en-US";
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(speech);
-  };
-
-  const startListening = () => {
-    if (!("webkitSpeechRecognition" in window)) return;
-
-    const SpeechRecognition =
-      (window as any).webkitSpeechRecognition ||
-      (window as any).SpeechRecognition;
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInput(transcript);
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-  };
-
   const scrollToBottom = () => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({
-      top: el.scrollHeight,
-      behavior: "smooth",
-    });
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
+
+  const typeText = (text: string, callback: (t: string) => void) => {
+    let i = 0;
+    let current = "";
+
+    const interval = setInterval(() => {
+      current += text[i];
+      callback(current);
+      i++;
+      if (i >= text.length) {
+        clearInterval(interval);
+      }
+    }, 12);
   };
 
   const pushAi = (text: string, delay = 0) => {
     setTyping(true);
 
     setTimeout(() => {
+      const id = crypto.randomUUID();
+
       setMessages((prev) => [
         ...prev,
-        {
-          id: crypto.randomUUID(),
-          sender: "ai",
-          text,
-          createdAt: Date.now(),
-        },
+        { id, sender: "ai", text: "", createdAt: Date.now() },
       ]);
 
-      speakText(text);
+      let current = "";
+
+      typeText(text, (t) => {
+        current = t;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === id ? { ...m, text: current } : m))
+        );
+        scrollToBottom();
+      });
+
       setTyping(false);
-      scrollToBottom();
     }, delay);
   };
 
@@ -96,13 +79,8 @@ export default function InterviewRoom({ role }: { role: Role }) {
     const res = await fetch(`${BASE_URL}/generate-question`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        role: role.id,
-        history: historyRef.current,
-        difficulty,
-      }),
+      body: JSON.stringify({ role: role.id, history: historyRef.current, difficulty }),
     });
-
     const data = await res.json();
     return data.question;
   };
@@ -111,25 +89,16 @@ export default function InterviewRoom({ role }: { role: Role }) {
     const res = await fetch(`${BASE_URL}/evaluate-answer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        question,
-        answer,
-        code,
-      }),
+      body: JSON.stringify({ question, answer, code }),
     });
-
     return await res.json();
   };
 
   useEffect(() => {
     const firstQ = "Tell me about yourself.";
     currentQuestionRef.current = firstQ;
-
-    const initialHistory = [{ question: firstQ, answer: "" }];
-    historyRef.current = initialHistory;
-    setHistoryState(initialHistory);
-
-    pushAi(`Welcome to ${role.title} interview.\n\n${firstQ}`, 800);
+    historyRef.current = [{ question: firstQ, answer: "" }];
+    pushAi(`Welcome to ${role.title} interview\n\n${firstQ}`, 600);
   }, []);
 
   useEffect(() => {
@@ -140,46 +109,29 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
   const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
-
     const text = input.trim();
     if (!text || typing || complete) return;
 
+    const id = crypto.randomUUID();
+
     setMessages((prev) => [
       ...prev,
-      {
-        id: crypto.randomUUID(),
-        sender: "user",
-        text,
-        createdAt: Date.now(),
-      },
+      { id, sender: "user", text, createdAt: Date.now() },
     ]);
 
     setInput("");
 
     const currentQ = currentQuestionRef.current;
-
-    const updatedHistory = historyRef.current.map((item, index) =>
-      index === historyRef.current.length - 1
-        ? { ...item, answer: text }
-        : item
-    );
-
-    historyRef.current = updatedHistory;
-    setHistoryState(updatedHistory);
+    historyRef.current[historyRef.current.length - 1].answer = text;
 
     const feedback = await evaluateAnswer(currentQ, text);
 
     pushAi(
-      `Score: ${feedback.score}/10
-
-Strengths:
-- ${feedback.strengths.join("\n- ")}
-
-Weaknesses:
-- ${feedback.weaknesses.join("\n- ")}
-
-Improved:
-${feedback.improved_answer}`,
+      `Score: ${feedback.score}/10\n\nStrengths:\n- ${feedback.strengths.join(
+        "\n- "
+      )}\n\nWeaknesses:\n- ${feedback.weaknesses.join(
+        "\n- "
+      )}\n\nImproved:\n${feedback.improved_answer}`,
       THINK_MS
     );
 
@@ -187,88 +139,104 @@ ${feedback.improved_answer}`,
       setTimeout(() => {
         setComplete(true);
         pushAi("Interview completed");
-      }, 1500);
+      }, 1200);
       return;
     }
 
     const nextQ = await generateQuestion();
     currentQuestionRef.current = nextQ;
+    historyRef.current.push({ question: nextQ, answer: "" });
 
-    const newHistory = [
-      ...historyRef.current,
-      { question: nextQ, answer: "" },
-    ];
-
-    historyRef.current = newHistory;
-    setHistoryState(newHistory);
-
-    setTimeout(() => {
-      pushAi(nextQ);
-    }, 1500);
+    setTimeout(() => pushAi(nextQ), 1200);
   };
 
-  const isCoding = currentQuestionRef.current.toLowerCase().includes("code");
-
   const timeLabel = useMemo(() => {
-    const m = Math.floor(elapsed / 60)
-      .toString()
-      .padStart(2, "0");
+    const m = Math.floor(elapsed / 60).toString().padStart(2, "0");
     const s = (elapsed % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
   }, [elapsed]);
 
   return (
-    <div className="flex h-[100dvh] w-full bg-[#0b0b0f] text-white">
-      <div className="flex flex-1 flex-col">
-        <div className="px-6 py-4 flex justify-between">
-          <h1>{role.title} Interview</h1>
-          <span>{timeLabel}</span>
-        </div>
-
-        <div className="px-6">
+    <div className="h-screen w-full bg-gradient-to-br from-black via-[#0a0a12] to-[#05050a] text-white flex flex-col">
+      
+      <div className="flex justify-between items-center px-6 py-4 border-b border-white/10 backdrop-blur-xl">
+        <h1 className="text-xl font-semibold">{role.title} Interview</h1>
+        <div className="flex items-center gap-4">
           <select
             value={difficulty}
             onChange={(e) => setDifficulty(e.target.value)}
-            className="mb-3 bg-white/10 p-2 rounded"
+            className="bg-white/5 border border-white/10 px-3 py-1 rounded-lg"
           >
             <option value="easy">Easy</option>
             <option value="medium">Medium</option>
             <option value="hard">Hard</option>
           </select>
-        </div>
-
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
-          {messages.map((m) => (
-            <ChatBubble key={m.id} message={m} />
-          ))}
-          {typing && <ChatBubble typing />}
-        </div>
-
-        <div className="px-6 pb-6">
-          {isCoding && (
-            <textarea
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="w-full h-32 bg-black text-green-400 mb-3 p-2"
-              placeholder="Write code here..."
-            />
-          )}
-
-          <form onSubmit={handleSend} className="flex gap-2">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              className="flex-1 bg-white/10 p-2"
-            />
-            <button type="button" onClick={startListening}>
-              🎤
-            </button>
-            <button>
-              <ArrowRight />
-            </button>
-          </form>
+          <span className="text-white/60">{timeLabel}</span>
         </div>
       </div>
+
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-6 py-8 space-y-4"
+      >
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            className="animate-[fadeIn_0.4s_ease]"
+          >
+            <ChatBubble message={m} />
+          </div>
+        ))}
+
+        {typing && (
+          <div className="text-white/40 animate-pulse">
+            AI is typing...
+          </div>
+        )}
+      </div>
+
+      <div className="px-6 pb-6">
+        {currentQuestionRef.current.toLowerCase().includes("code") && (
+          <textarea
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className="w-full mb-3 h-32 bg-black border border-green-500/20 rounded-xl p-3 text-green-400 font-mono"
+            placeholder="Write your code..."
+          />
+        )}
+
+        <form
+          onSubmit={handleSend}
+          className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 backdrop-blur-xl"
+        >
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            className="flex-1 bg-transparent outline-none resize-none text-white placeholder-white/30"
+            placeholder="Type your answer..."
+          />
+
+          <button
+            type="submit"
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-white text-black hover:scale-105 transition"
+          >
+            <ArrowRight size={18} />
+          </button>
+        </form>
+      </div>
+
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }
