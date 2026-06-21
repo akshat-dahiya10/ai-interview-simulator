@@ -10,6 +10,7 @@ import {
 import { ArrowRight, Mic } from "lucide-react";
 import type { ChatMessage, Role } from "@/lib/types";
 import ChatBubble from "@/components/chat/ChatBubble";
+import CodingRound from "@/components/interview/CodingRound"; // ✅ ADD
 
 const THINK_MS = 800;
 
@@ -22,6 +23,8 @@ export default function InterviewRoom({ role }: { role: Role }) {
   const [elapsed, setElapsed] = useState(0);
   const [complete, setComplete] = useState(false);
   const [isListening, setIsListening] = useState(false);
+
+  const [round, setRound] = useState<"chat" | "coding">("chat"); // ✅ ADD
 
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -161,6 +164,14 @@ export default function InterviewRoom({ role }: { role: Role }) {
       THINK_MS
     );
 
+    // ✅ CODING ROUND TRIGGER
+    if (historyRef.current.length >= 3) {
+      setTimeout(() => {
+        setRound("coding");
+      }, 1200);
+      return;
+    }
+
     if (historyRef.current.length >= 5) {
       setTimeout(() => {
         setComplete(true);
@@ -181,6 +192,11 @@ export default function InterviewRoom({ role }: { role: Role }) {
     const s = (elapsed % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
   }, [elapsed]);
+
+  // ✅ SWITCH UI
+  if (round === "coding") {
+    return <CodingRound />;
+  }
 
   return (
     <div className="h-screen w-full bg-gradient-to-br from-black via-[#0a0a12] to-[#05050a] text-white flex flex-col">
