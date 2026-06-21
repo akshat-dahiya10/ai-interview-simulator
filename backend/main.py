@@ -5,66 +5,61 @@ import random
 
 app = FastAPI()
 
-# =============================
-# MODELS
-# =============================
 class QuestionRequest(BaseModel):
     role: str
     history: List[dict] = []
+    difficulty: str = "medium"
 
 class AnswerRequest(BaseModel):
     question: str
     answer: str
+    code: str = ""
 
-# =============================
-# QUESTION BANK
-# =============================
 QUESTION_BANK = {
-    "frontend": [
-        "Tell me about yourself.",
-        "Explain your recent project.",
-        "What is React lifecycle?",
-        "Explain useEffect in React.",
-        "Difference between var, let, const?",
-        "What is Virtual DOM?",
-        "How React rendering works?",
-        "What is state vs props?",
-        "How do you optimize performance in React?"
-    ]
+    "frontend": {
+        "easy": [
+            "Tell me about yourself.",
+            "What is HTML?",
+            "What is CSS?"
+        ],
+        "medium": [
+            "Explain your recent project.",
+            "What is Virtual DOM?",
+            "Difference between var, let, const?"
+        ],
+        "hard": [
+            "Explain React rendering lifecycle in detail.",
+            "How do you optimize performance in React?",
+            "Explain advanced hooks in React."
+        ]
+    }
 }
 
-# =============================
-# GENERATE QUESTION (NO REPEAT GUARANTEED)
-# =============================
 @app.post("/generate-question")
 def generate_question(req: QuestionRequest):
     role = req.role.lower().strip()
+    difficulty = req.difficulty
 
-    questions = QUESTION_BANK.get(role, QUESTION_BANK["frontend"])
+    role_data = QUESTION_BANK.get(role, QUESTION_BANK["frontend"])
+    questions = role_data.get(difficulty, role_data["medium"])
 
     asked_questions = [h["question"] for h in req.history if "question" in h]
-
     remaining = [q for q in questions if q not in asked_questions]
 
-    # 🚀 HARD FIX: never repeat until exhausted
     if remaining:
-        next_q = remaining[0]   # deterministic (no random repeat bug)
+        next_q = remaining[0]
     else:
         next_q = random.choice(questions)
 
     return {"question": next_q}
 
-
-# =============================
-# EVALUATE ANSWER (ALWAYS RETURNS DATA)
-# =============================
 @app.post("/evaluate-answer")
 def evaluate_answer(req: AnswerRequest):
     answer = req.answer.strip()
+    code = req.code.strip()
 
     word_count = len(answer.split())
 
-    # scoring logic
     if word_count < 5:
         score = 2
     elif word_count < 12:
@@ -74,6 +69,9 @@ def evaluate_answer(req: AnswerRequest):
     else:
         score = 9
 
+    if code:
+        score = min(score + 1, 10)
+
     strengths = []
     weaknesses = []
 
@@ -81,6 +79,9 @@ def evaluate_answer(req: AnswerRequest):
         strengths.append("Good explanation")
     else:
         weaknesses.append("Too short answer")
+
+    if code:
+        strengths.append("Code provided")
 
     if "project" in answer.lower():
         strengths.append("Relevant to question")
@@ -95,5 +96,5 @@ def evaluate_answer(req: AnswerRequest):
         "score": score,
         "strengths": strengths,
         "weaknesses": weaknesses,
-        "improved_answer": f"You can improve by giving structured explanation, examples, and clarity.\n\nBetter version:\n{answer} (add real-world example + depth)"
+        "improved_answer": f"Improve with structured explanation, examples, and cleaner logic.\n\n{answer}"
     }
