@@ -70,20 +70,29 @@ def generate_question(data: QuestionRequest):
         ])
 
     prompt = f"""
-You are a senior {data.role} interviewer.
+You are a professional {data.role} interviewer conducting a real interview.
 
 Previous conversation:
 {history_text if history_text else "No previous questions."}
 
-Task:
-- Ask the NEXT interview question
-- Do NOT repeat previous questions
-- Gradually increase difficulty
-- Keep it realistic and concise
+Rules:
+- NEVER repeat any previous question
+- First question should be "Tell me about yourself"
+- After that, ask DIFFERENT and RELEVANT questions
+- Increase difficulty gradually
+- Ask practical, real-world interview questions
+- Keep it short and natural (1-2 lines max)
 
-Return ONLY the question text.
+Examples of good flow:
+1. Tell me about yourself
+2. What technologies do you use in frontend?
+3. Explain React lifecycle
+4. What is virtual DOM?
+5. How do you optimize performance?
+
+Now ask the NEXT question.
+Only return the question text.
 """
-
     try:
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
