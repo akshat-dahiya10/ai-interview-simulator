@@ -22,7 +22,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
   const [complete, setComplete] = useState(false);
   const [historyState, setHistoryState] = useState<any[]>([]);
 
-  // 🎤 VOICE STATE
+  // 🎤 VOICE
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
 
@@ -34,18 +34,15 @@ export default function InterviewRoom({ role }: { role: Role }) {
     process.env.NEXT_PUBLIC_BACKEND_URL ||
     "https://ai-interview-simulator-production-10.up.railway.app";
 
-  // =============================
-  // 🔊 SPEAK AI
-  // =============================
+  // 🔊 SPEAK
   const speakText = (text: string) => {
     const speech = new SpeechSynthesisUtterance(text);
     speech.lang = "en-US";
+    window.speechSynthesis.cancel();
     window.speechSynthesis.speak(speech);
   };
 
-  // =============================
-  // 🎤 START LISTENING
-  // =============================
+  // 🎤 LISTEN
   const startListening = () => {
     if (!("webkitSpeechRecognition" in window)) {
       alert("Speech recognition not supported");
@@ -71,18 +68,14 @@ export default function InterviewRoom({ role }: { role: Role }) {
     recognition.start();
   };
 
-  // =============================
   // SCROLL
-  // =============================
   const scrollToBottom = () => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   };
 
-  // =============================
   // AI MESSAGE
-  // =============================
   const pushAi = (text: string, delay = 0) => {
     setTyping(true);
 
@@ -97,16 +90,14 @@ export default function InterviewRoom({ role }: { role: Role }) {
         },
       ]);
 
-      speakText(text); // 🔥 VOICE OUTPUT
+      speakText(text);
 
       setTyping(false);
       scrollToBottom();
     }, delay);
   };
 
-  // =============================
   // GENERATE QUESTION
-  // =============================
   const generateQuestion = async () => {
     try {
       const res = await fetch(`${BASE_URL}/generate-question`, {
@@ -125,9 +116,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
     }
   };
 
-  // =============================
-  // EVALUATE ANSWER
-  // =============================
+  // EVALUATE
   const evaluateAnswer = async (question: string, answer: string) => {
     try {
       const res = await fetch(`${BASE_URL}/evaluate-answer`, {
@@ -145,9 +134,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
     }
   };
 
-  // =============================
-  // START INTERVIEW
-  // =============================
+  // START
   useEffect(() => {
     const firstQ = "Tell me about yourself.";
     currentQuestionRef.current = firstQ;
@@ -159,18 +146,14 @@ export default function InterviewRoom({ role }: { role: Role }) {
     pushAi(`Welcome to ${role.title} interview.\n\n${firstQ}`, 800);
   }, []);
 
-  // =============================
   // TIMER
-  // =============================
   useEffect(() => {
     if (complete) return;
     const id = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(id);
   }, [complete]);
 
-  // =============================
-  // SEND ANSWER
-  // =============================
+  // SEND
   const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
 
@@ -251,8 +234,8 @@ ${feedback.improved_answer}`,
   }, [elapsed]);
 
   return (
-    <div className="flex h-[100dvh] w-full">
-      <div className="hidden lg:block">
+    <div className="flex h-[100dvh] w-full bg-[#0b0b0f] text-white">
+      <div className="hidden lg:block border-r border-white/10">
         <Sidebar
           role={role}
           current={historyState.length}
@@ -261,43 +244,64 @@ ${feedback.improved_answer}`,
         />
       </div>
 
-      <div className="flex flex-1 flex-col">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+      <div className="flex flex-1 flex-col backdrop-blur-xl">
+        {/* HEADER */}
+        <div className="px-6 py-4 border-b border-white/10 flex justify-between">
+          <h1 className="text-lg font-semibold">
+            {role.title} Interview
+          </h1>
+          <span className="text-white/50">{timeLabel}</span>
+        </div>
+
+        {/* CHAT */}
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto scroll-smooth px-6 py-6"
+        >
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
-              <ChatBubble key={m.id} message={m} />
+              <ChatBubble
+                key={m.id}
+                message={m}
+                className="transition-all duration-300"
+              />
             ))}
             {typing && <ChatBubble typing />}
           </div>
         </div>
 
-        <div className="p-4">
+        {/* INPUT */}
+        <div className="px-6 pb-6">
           {complete ? (
-            <div className="text-center text-white text-lg">
+            <div className="text-center text-white/70 text-lg py-6">
               Interview Complete ✅
             </div>
           ) : (
-            <form onSubmit={handleSend} className="flex gap-2">
+            <form
+              onSubmit={handleSend}
+              className="max-w-3xl mx-auto flex items-end gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3"
+            >
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                className="flex-1 p-3 rounded bg-black text-white"
-                placeholder="Type or Speak..."
+                className="flex-1 bg-transparent outline-none resize-none"
+                placeholder="Type or speak..."
               />
 
-              {/* 🎤 VOICE BUTTON */}
               <button
                 type="button"
                 onClick={startListening}
-                className={`px-4 py-2 rounded ${
-                  isListening ? "bg-red-500" : "bg-green-500"
-                } text-white`}
+                className={`w-10 h-10 rounded-full ${
+                  isListening
+                    ? "bg-red-500"
+                    : "bg-white/10 hover:bg-white/20"
+                }`}
               >
-                {isListening ? "Listening..." : "🎤"}
+                🎤
               </button>
 
-              <button className="bg-purple-600 px-4 rounded text-white">
-                <ArrowRight />
+              <button className="w-10 h-10 rounded-full bg-white text-black">
+                <ArrowRight size={18} />
               </button>
             </form>
           )}
