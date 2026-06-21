@@ -22,14 +22,54 @@ export default function InterviewRoom({ role }: { role: Role }) {
   const [complete, setComplete] = useState(false);
   const [historyState, setHistoryState] = useState<any[]>([]);
 
+  // 🎤 VOICE STATE
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<any[]>([]);
   const currentQuestionRef = useRef<string>("");
 
-  // ✅ FINAL BACKEND URL FIX
   const BASE_URL =
     process.env.NEXT_PUBLIC_BACKEND_URL ||
     "https://ai-interview-simulator-production-10.up.railway.app";
+
+  // =============================
+  // 🔊 SPEAK AI
+  // =============================
+  const speakText = (text: string) => {
+    const speech = new SpeechSynthesisUtterance(text);
+    speech.lang = "en-US";
+    window.speechSynthesis.speak(speech);
+  };
+
+  // =============================
+  // 🎤 START LISTENING
+  // =============================
+  const startListening = () => {
+    if (!("webkitSpeechRecognition" in window)) {
+      alert("Speech recognition not supported");
+      return;
+    }
+
+    const SpeechRecognition =
+      (window as any).webkitSpeechRecognition ||
+      (window as any).SpeechRecognition;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
 
   // =============================
   // SCROLL
@@ -56,6 +96,9 @@ export default function InterviewRoom({ role }: { role: Role }) {
           createdAt: Date.now(),
         },
       ]);
+
+      speakText(text); // 🔥 VOICE OUTPUT
+
       setTyping(false);
       scrollToBottom();
     }, delay);
@@ -77,8 +120,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
       const data = await res.json();
       return data.question || "Explain your recent project.";
-    } catch (err) {
-      console.error(err);
+    } catch {
       return "Explain your recent project.";
     }
   };
@@ -98,8 +140,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
       });
 
       return await res.json();
-    } catch (err) {
-      console.error(err);
+    } catch {
       return null;
     }
   };
@@ -111,13 +152,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
     const firstQ = "Tell me about yourself.";
     currentQuestionRef.current = firstQ;
 
-    const initialHistory = [
-      {
-        question: firstQ,
-        answer: "",
-      },
-    ];
-
+    const initialHistory = [{ question: firstQ, answer: "" }];
     historyRef.current = initialHistory;
     setHistoryState(initialHistory);
 
@@ -134,7 +169,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
   }, [complete]);
 
   // =============================
-  // HANDLE SEND (FINAL FIX)
+  // SEND ANSWER
   // =============================
   const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -142,7 +177,6 @@ export default function InterviewRoom({ role }: { role: Role }) {
     const text = input.trim();
     if (!text || typing || complete) return;
 
-    // USER MESSAGE
     setMessages((prev) => [
       ...prev,
       {
@@ -157,23 +191,15 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
     const currentQ = currentQuestionRef.current;
 
-    // ✅ UPDATE LAST QUESTION (NO DUPLICATE)
-    const updatedHistory = historyRef.current.map((item, index) => {
-      if (index === historyRef.current.length - 1) {
-        return {
-          ...item,
-          answer: text,
-        };
-      }
-      return item;
-    });
+    const updatedHistory = historyRef.current.map((item, index) =>
+      index === historyRef.current.length - 1
+        ? { ...item, answer: text }
+        : item
+    );
 
     historyRef.current = updatedHistory;
     setHistoryState(updatedHistory);
 
-    // =============================
-    // EVALUATION
-    // =============================
     const feedback = await evaluateAnswer(currentQ, text);
 
     if (feedback) {
@@ -192,9 +218,6 @@ ${feedback.improved_answer}`,
       );
     }
 
-    // =============================
-    // COMPLETE CHECK
-    // =============================
     if (historyRef.current.length >= 5) {
       setTimeout(() => {
         setComplete(true);
@@ -203,18 +226,12 @@ ${feedback.improved_answer}`,
       return;
     }
 
-    // =============================
-    // NEXT QUESTION
-    // =============================
     const nextQ = await generateQuestion();
     currentQuestionRef.current = nextQ;
 
     const newHistory = [
       ...historyRef.current,
-      {
-        question: nextQ,
-        answer: "",
-      },
+      { question: nextQ, answer: "" },
     ];
 
     historyRef.current = newHistory;
@@ -265,8 +282,20 @@ ${feedback.improved_answer}`,
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 className="flex-1 p-3 rounded bg-black text-white"
-                placeholder="Type your answer..."
+                placeholder="Type or Speak..."
               />
+
+              {/* 🎤 VOICE BUTTON */}
+              <button
+                type="button"
+                onClick={startListening}
+                className={`px-4 py-2 rounded ${
+                  isListening ? "bg-red-500" : "bg-green-500"
+                } text-white`}
+              >
+                {isListening ? "Listening..." : "🎤"}
+              </button>
+
               <button className="bg-purple-600 px-4 rounded text-white">
                 <ArrowRight />
               </button>
