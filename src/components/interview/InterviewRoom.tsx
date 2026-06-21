@@ -1,14 +1,12 @@
 "use client";
 
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type FormEvent,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import type { ChatMessage, Role } from "@/lib/types";
 import ChatBubble from "@/components/chat/ChatBubble";
@@ -25,22 +23,21 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // store history for backend
   const historyRef = useRef<any[]>([]);
   const currentQuestionRef = useRef<string>("");
 
+  const BASE_URL =
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    "https://ai-interview-simulator-production-3414.up.railway.app";
+
+  // =============================
+  // SCROLL
+  // =============================
   const scrollToBottom = () => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   };
-
-  // =============================
-  // BACKEND URL
-  // =============================
-  const BASE_URL =
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    "https://ai-interview-simulator-production-3414.up.railway.app";
 
   // =============================
   // PUSH AI MESSAGE
@@ -78,10 +75,10 @@ export default function InterviewRoom({ role }: { role: Role }) {
       });
 
       const data = await res.json();
-      return data.question || "Tell me about yourself.";
+      return data.question || "Explain your recent project.";
     } catch (err) {
       console.error(err);
-      return "Tell me about yourself.";
+      return "Explain your recent project.";
     }
   };
 
@@ -107,20 +104,16 @@ export default function InterviewRoom({ role }: { role: Role }) {
   };
 
   // =============================
-  // START INTERVIEW
+  // START INTERVIEW (FIXED FIRST Q)
   // =============================
   useEffect(() => {
-    const start = async () => {
-      const q = await generateQuestion();
-      currentQuestionRef.current = q;
+    const firstQ = "Tell me about yourself.";
+    currentQuestionRef.current = firstQ;
 
-      pushAi(
-        `Welcome to ${role.title} interview.\n\n${q}`,
-        800
-      );
-    };
-
-    start();
+    pushAi(
+      `Welcome to ${role.title} interview.\n\n${firstQ}`,
+      800
+    );
   }, []);
 
   // =============================
@@ -141,7 +134,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
     const text = input.trim();
     if (!text || typing || complete) return;
 
-    // add user message
+    // user message
     setMessages((prev) => [
       ...prev,
       {
@@ -155,7 +148,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
     setInput("");
 
     // =============================
-    // 1. EVALUATE ANSWER
+    // 1. EVALUATION
     // =============================
     const feedback = await evaluateAnswer(
       currentQuestionRef.current,
@@ -164,11 +157,16 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
     if (feedback) {
       pushAi(
-        `Score: ${feedback.score}/10\n\nStrengths:\n- ${feedback.strengths?.join(
-          "\n- "
-        )}\n\nWeaknesses:\n- ${feedback.weaknesses?.join(
-          "\n- "
-        )}\n\nImproved Answer:\n${feedback.improved_answer}`,
+        `Score: ${feedback.score}/10
+
+Strengths:
+- ${feedback.strengths?.join("\n- ")}
+
+Weaknesses:
+- ${feedback.weaknesses?.join("\n- ")}
+
+Improved Answer:
+${feedback.improved_answer}`,
         THINK_MS
       );
     }
@@ -188,7 +186,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
     pushAi(nextQ, THINK_MS + 800);
 
     // =============================
-    // OPTIONAL END
+    // COMPLETE AFTER 5 Q
     // =============================
     if (historyRef.current.length >= 5) {
       setTimeout(() => {
@@ -209,7 +207,12 @@ export default function InterviewRoom({ role }: { role: Role }) {
   return (
     <div className="flex h-[100dvh] w-full">
       <div className="hidden lg:block">
-        <Sidebar role={role} current={historyRef.current.length} total={5} elapsed={elapsed} />
+        <Sidebar
+          role={role}
+          current={historyRef.current.length}
+          total={5}
+          elapsed={elapsed}
+        />
       </div>
 
       <div className="flex flex-1 flex-col">
