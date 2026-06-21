@@ -9,136 +9,194 @@ import {
   type FormEvent,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Clock, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { ChatMessage, Role } from "@/lib/types";
 import ChatBubble from "@/components/chat/ChatBubble";
 import Sidebar from "@/components/layout/Sidebar";
-import ProgressBar from "@/components/ui/ProgressBar";
-import AnimatedButton from "@/components/ui/AnimatedButton";
-import { resolveIcon } from "@/components/icons";
 
-const THINK_MS = 1400;
+const THINK_MS = 1200;
 
 export default function InterviewRoom({ role }: { role: Role }) {
-  const total = role.questions.length;
-
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [q, setQ] = useState(0);
-  const [delivered, setDelivered] = useState(0);
   const [typing, setTyping] = useState(false);
-  const [complete, setComplete] = useState(false);
   const [input, setInput] = useState("");
   const [elapsed, setElapsed] = useState(0);
+  const [complete, setComplete] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const Icon = resolveIcon(role.icon);
+  // store history for backend
+  const historyRef = useRef<any[]>([]);
+  const currentQuestionRef = useRef<string>("");
 
-  // ✅ BACKEND CALL
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  };
+
+  // =============================
+  // BACKEND URL
+  // =============================
+  const BASE_URL =
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    "https://ai-interview-simulator-production-3414.up.railway.app";
+
+  // =============================
+  // PUSH AI MESSAGE
+  // =============================
+  const pushAi = (text: string, delay = 0) => {
+    setTyping(true);
+
+    setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          sender: "ai",
+          text,
+          createdAt: Date.now(),
+        },
+      ]);
+      setTyping(false);
+      scrollToBottom();
+    }, delay);
+  };
+
+  // =============================
+  // GENERATE QUESTION
+  // =============================
   const generateQuestion = async () => {
     try {
-      const res = await fetch(
-        "https://ai-interview-simulator-production-3414.up.railway.app/generate-question",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role: role.id }),
-        }
-      );
+      const res = await fetch(`${BASE_URL}/generate-question`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: role.id,
+          history: historyRef.current,
+        }),
+      });
 
       const data = await res.json();
       return data.question || "Tell me about yourself.";
     } catch (err) {
-      console.error("API Error:", err);
+      console.error(err);
       return "Tell me about yourself.";
     }
   };
 
-  const scrollToBottom = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, []);
+  // =============================
+  // EVALUATE ANSWER
+  // =============================
+  const evaluateAnswer = async (question: string, answer: string) => {
+    try {
+      const res = await fetch(`${BASE_URL}/evaluate-answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          answer,
+        }),
+      });
 
-  const pushAi = useCallback(
-    (text: string, after = 0) => {
-      setTyping(true);
-      const t = setTimeout(() => {
-        setMessages((m) => [
-          ...m,
-          { id: crypto.randomUUID(), sender: "ai", text, createdAt: Date.now() },
-        ]);
-        setTyping(false);
-        setTimeout(scrollToBottom, 60);
-      }, after);
-      timers.current.push(t);
-    },
-    [scrollToBottom]
-  );
+      return await res.json();
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
+  };
 
-  // 🚀 START INTERVIEW (DYNAMIC QUESTION)
+  // =============================
+  // START INTERVIEW
+  // =============================
   useEffect(() => {
     const start = async () => {
-      const firstQ = await generateQuestion();
+      const q = await generateQuestion();
+      currentQuestionRef.current = q;
 
       pushAi(
-        `Thanks for joining the ${role.title} mock interview.\n\n${firstQ}`,
-        700
+        `Welcome to ${role.title} interview.\n\n${q}`,
+        800
       );
-
-      setDelivered(1);
     };
 
     start();
-    // eslint-disable-next-line
   }, []);
 
+  // =============================
   // TIMER
+  // =============================
   useEffect(() => {
     if (complete) return;
     const id = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(id);
   }, [complete]);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, typing, scrollToBottom]);
-
-  useEffect(() => {
-    return () => timers.current.forEach(clearTimeout);
-  }, []);
-
-  // 🚀 SEND ANSWER + GET NEXT QUESTION
+  // =============================
+  // HANDLE SEND
+  // =============================
   const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
+
     const text = input.trim();
     if (!text || typing || complete) return;
 
-    setMessages((m) => [
-      ...m,
-      { id: crypto.randomUUID(), sender: "user", text, createdAt: Date.now() },
+    // add user message
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        sender: "user",
+        text,
+        createdAt: Date.now(),
+      },
     ]);
 
     setInput("");
 
+    // =============================
+    // 1. EVALUATE ANSWER
+    // =============================
+    const feedback = await evaluateAnswer(
+      currentQuestionRef.current,
+      text
+    );
+
+    if (feedback) {
+      pushAi(
+        `Score: ${feedback.score}/10\n\nStrengths:\n- ${feedback.strengths?.join(
+          "\n- "
+        )}\n\nWeaknesses:\n- ${feedback.weaknesses?.join(
+          "\n- "
+        )}\n\nImproved Answer:\n${feedback.improved_answer}`,
+        THINK_MS
+      );
+    }
+
+    // save history
+    historyRef.current.push({
+      question: currentQuestionRef.current,
+      answer: text,
+    });
+
+    // =============================
+    // 2. NEXT QUESTION
+    // =============================
     const nextQ = await generateQuestion();
+    currentQuestionRef.current = nextQ;
 
-    pushAi(nextQ, THINK_MS);
+    pushAi(nextQ, THINK_MS + 800);
 
-    setQ((prev) => prev + 1);
-    setDelivered((prev) => prev + 1);
-
-    // OPTIONAL LIMIT
-    if (delivered + 1 >= 5) {
+    // =============================
+    // OPTIONAL END
+    // =============================
+    if (historyRef.current.length >= 5) {
       setTimeout(() => {
         setComplete(true);
-      }, THINK_MS + 200);
+        pushAi("Interview completed ✅");
+      }, 2000);
     }
   };
-
-  const progressValue = complete ? delivered : delivered;
 
   const timeLabel = useMemo(() => {
     const m = Math.floor(elapsed / 60)
@@ -149,19 +207,14 @@ export default function InterviewRoom({ role }: { role: Role }) {
   }, [elapsed]);
 
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden">
+    <div className="flex h-[100dvh] w-full">
       <div className="hidden lg:block">
-        <Sidebar role={role} current={delivered} total={total} elapsed={elapsed} />
+        <Sidebar role={role} current={historyRef.current.length} total={5} elapsed={elapsed} />
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between px-4 py-3 lg:hidden">
-          <span className="text-sm text-white">{role.title}</span>
-          <span className="text-xs text-white/60">{timeLabel}</span>
-        </header>
-
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
-          <div className="mx-auto max-w-3xl flex flex-col gap-6">
+      <div className="flex flex-1 flex-col">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+          <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
               <ChatBubble key={m.id} message={m} />
             ))}
@@ -171,17 +224,19 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
         <div className="p-4">
           {complete ? (
-            <div className="text-center text-white">Interview Complete ✅</div>
+            <div className="text-center text-white text-lg">
+              Interview Complete ✅
+            </div>
           ) : (
             <form onSubmit={handleSend} className="flex gap-2">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                className="flex-1 p-2 rounded bg-black text-white"
+                className="flex-1 p-3 rounded bg-black text-white"
                 placeholder="Type your answer..."
               />
-              <button type="submit" className="bg-purple-500 px-4 rounded">
-                Send
+              <button className="bg-purple-600 px-4 rounded text-white">
+                <ArrowRight />
               </button>
             </form>
           )}
