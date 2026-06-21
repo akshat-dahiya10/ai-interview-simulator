@@ -7,7 +7,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Mic } from "lucide-react";
 import type { ChatMessage, Role } from "@/lib/types";
 import ChatBubble from "@/components/chat/ChatBubble";
 
@@ -21,7 +21,9 @@ export default function InterviewRoom({ role }: { role: Role }) {
   const [difficulty, setDifficulty] = useState("medium");
   const [elapsed, setElapsed] = useState(0);
   const [complete, setComplete] = useState(false);
+  const [isListening, setIsListening] = useState(false);
 
+  const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<any[]>([]);
   const currentQuestionRef = useRef<string>("");
@@ -44,9 +46,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
       current += text[i];
       callback(current);
       i++;
-      if (i >= text.length) {
-        clearInterval(interval);
-      }
+      if (i >= text.length) clearInterval(interval);
     }, 12);
   };
 
@@ -61,12 +61,9 @@ export default function InterviewRoom({ role }: { role: Role }) {
         { id, sender: "ai", text: "", createdAt: Date.now() },
       ]);
 
-      let current = "";
-
       typeText(text, (t) => {
-        current = t;
         setMessages((prev) =>
-          prev.map((m) => (m.id === id ? { ...m, text: current } : m))
+          prev.map((m) => (m.id === id ? { ...m, text: t } : m))
         );
         scrollToBottom();
       });
@@ -75,11 +72,37 @@ export default function InterviewRoom({ role }: { role: Role }) {
     }, delay);
   };
 
+  const startListening = () => {
+    if (!("webkitSpeechRecognition" in window)) return;
+
+    const SpeechRecognition =
+      (window as any).webkitSpeechRecognition ||
+      (window as any).SpeechRecognition;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+
   const generateQuestion = async () => {
     const res = await fetch(`${BASE_URL}/generate-question`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: role.id, history: historyRef.current, difficulty }),
+      body: JSON.stringify({
+        role: role.id,
+        history: historyRef.current,
+        difficulty,
+      }),
     });
     const data = await res.json();
     return data.question;
@@ -89,7 +112,11 @@ export default function InterviewRoom({ role }: { role: Role }) {
     const res = await fetch(`${BASE_URL}/evaluate-answer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, answer, code }),
+      body: JSON.stringify({
+        question,
+        answer,
+        code,
+      }),
     });
     return await res.json();
   };
@@ -109,14 +136,13 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
   const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
+
     const text = input.trim();
     if (!text || typing || complete) return;
 
-    const id = crypto.randomUUID();
-
     setMessages((prev) => [
       ...prev,
-      { id, sender: "user", text, createdAt: Date.now() },
+      { id: crypto.randomUUID(), sender: "user", text, createdAt: Date.now() },
     ]);
 
     setInput("");
@@ -158,41 +184,37 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
   return (
     <div className="h-screen w-full bg-gradient-to-br from-black via-[#0a0a12] to-[#05050a] text-white flex flex-col">
-      
+
       <div className="flex justify-between items-center px-6 py-4 border-b border-white/10 backdrop-blur-xl">
         <h1 className="text-xl font-semibold">{role.title} Interview</h1>
-        <div className="flex items-center gap-4">
-          <select
-            value={difficulty}
-            onChange={(e) => setDifficulty(e.target.value)}
-            className="bg-white/5 border border-white/10 px-3 py-1 rounded-lg"
-          >
-            <option value="easy">Easy</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-          </select>
-          <span className="text-white/60">{timeLabel}</span>
+        <span className="text-white/60">{timeLabel}</span>
+      </div>
+
+      <div className="flex justify-center py-4">
+        <div className="flex gap-2 bg-white/5 border border-white/10 p-1 rounded-xl">
+          {["easy", "medium", "hard"].map((lvl) => (
+            <button
+              key={lvl}
+              onClick={() => setDifficulty(lvl)}
+              className={`px-4 py-1 rounded-lg text-sm ${
+                difficulty === lvl
+                  ? "bg-white text-black"
+                  : "text-white/60 hover:text-white"
+              }`}
+            >
+              {lvl}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-6 py-8 space-y-4"
-      >
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 space-y-4">
         {messages.map((m) => (
-          <div
-            key={m.id}
-            className="animate-[fadeIn_0.4s_ease]"
-          >
+          <div key={m.id} className="animate-[fadeIn_0.4s_ease]">
             <ChatBubble message={m} />
           </div>
         ))}
-
-        {typing && (
-          <div className="text-white/40 animate-pulse">
-            AI is typing...
-          </div>
-        )}
+        {typing && <div className="text-white/40 animate-pulse">AI is typing...</div>}
       </div>
 
       <div className="px-6 pb-6">
@@ -215,6 +237,18 @@ export default function InterviewRoom({ role }: { role: Role }) {
             className="flex-1 bg-transparent outline-none resize-none text-white placeholder-white/30"
             placeholder="Type your answer..."
           />
+
+          <button
+            type="button"
+            onClick={startListening}
+            className={`w-10 h-10 flex items-center justify-center rounded-full transition ${
+              isListening
+                ? "bg-red-500 animate-pulse"
+                : "bg-white/10 hover:bg-white/20"
+            }`}
+          >
+            <Mic size={18} />
+          </button>
 
           <button
             type="submit"
