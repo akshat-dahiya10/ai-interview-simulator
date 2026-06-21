@@ -260,11 +260,7 @@ ${feedback.improved_answer}`,
         >
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
             {messages.map((m) => (
-              <ChatBubble
-                key={m.id}
-                message={m}
-                className="transition-all duration-300"
-              />
+             <ChatBubble key={m.id} message={m} />
             ))}
             {typing && <ChatBubble typing />}
           </div>
