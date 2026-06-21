@@ -4,14 +4,18 @@ import InterviewRoom from "@/components/interview/InterviewRoom";
 
 export const dynamic = "force-dynamic";
 
-export default function Page({
+export default async function Page({
   params,
 }: {
-  params: { role: string };
+  params: Promise<{ role?: string }>;
 }) {
-  const roleId = params.role.toLowerCase().trim();
+  const { role } = await params;
 
-  const roleData = getRole(roleId);
+  if (!role) {
+    notFound();
+  }
+
+  const roleData = getRole(role.toLowerCase().trim());
 
   if (!roleData) {
     notFound();
