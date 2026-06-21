@@ -20,17 +20,16 @@ export default function InterviewRoom({ role }: { role: Role }) {
   const [input, setInput] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [complete, setComplete] = useState(false);
-
-  // ✅ NEW: proper history state
   const [historyState, setHistoryState] = useState<any[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<any[]>([]);
   const currentQuestionRef = useRef<string>("");
 
+  // ✅ FINAL BACKEND URL FIX
   const BASE_URL =
     process.env.NEXT_PUBLIC_BACKEND_URL ||
-    "https://ai-interview-simulator-production-3414.up.railway.app";
+    "https://ai-interview-simulator-production-10.up.railway.app";
 
   // =============================
   // SCROLL
@@ -63,16 +62,6 @@ export default function InterviewRoom({ role }: { role: Role }) {
   };
 
   // =============================
-  // DUPLICATE CHECK
-  // =============================
-  const isDuplicate = (q: string) => {
-    return historyRef.current.some(
-      (item) =>
-        item.question.toLowerCase().trim() === q.toLowerCase().trim()
-    );
-  };
-
-  // =============================
   // GENERATE QUESTION
   // =============================
   const generateQuestion = async () => {
@@ -87,14 +76,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
       });
 
       const data = await res.json();
-      let q = data.question || "Explain your recent project.";
-
-      // ✅ frontend protection
-      if (isDuplicate(q)) {
-        return "What challenges did you face in your project?";
-      }
-
-      return q;
+      return data.question || "Explain your recent project.";
     } catch (err) {
       console.error(err);
       return "Explain your recent project.";
@@ -129,7 +111,6 @@ export default function InterviewRoom({ role }: { role: Role }) {
     const firstQ = "Tell me about yourself.";
     currentQuestionRef.current = firstQ;
 
-    // ✅ FIX: add first question to history
     const initialHistory = [
       {
         question: firstQ,
@@ -153,7 +134,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
   }, [complete]);
 
   // =============================
-  // HANDLE SEND
+  // HANDLE SEND (FINAL FIX)
   // =============================
   const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -176,16 +157,16 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
     const currentQ = currentQuestionRef.current;
 
-    // =============================
-    // SAVE HISTORY FIRST (IMPORTANT)
-    // =============================
-    const updatedHistory = [
-      ...historyRef.current,
-      {
-        question: currentQ,
-        answer: text,
-      },
-    ];
+    // ✅ UPDATE LAST QUESTION (NO DUPLICATE)
+    const updatedHistory = historyRef.current.map((item, index) => {
+      if (index === historyRef.current.length - 1) {
+        return {
+          ...item,
+          answer: text,
+        };
+      }
+      return item;
+    });
 
     historyRef.current = updatedHistory;
     setHistoryState(updatedHistory);
@@ -212,24 +193,36 @@ ${feedback.improved_answer}`,
     }
 
     // =============================
-    // NEXT QUESTION
-    // =============================
-    const nextQ = await generateQuestion();
-    currentQuestionRef.current = nextQ;
-
-    setTimeout(() => {
-      pushAi(nextQ);
-    }, 1500);
-
-    // =============================
-    // COMPLETE AFTER 5 Q
+    // COMPLETE CHECK
     // =============================
     if (historyRef.current.length >= 5) {
       setTimeout(() => {
         setComplete(true);
         pushAi("Interview completed ✅");
-      }, 2000);
+      }, 1500);
+      return;
     }
+
+    // =============================
+    // NEXT QUESTION
+    // =============================
+    const nextQ = await generateQuestion();
+    currentQuestionRef.current = nextQ;
+
+    const newHistory = [
+      ...historyRef.current,
+      {
+        question: nextQ,
+        answer: "",
+      },
+    ];
+
+    historyRef.current = newHistory;
+    setHistoryState(newHistory);
+
+    setTimeout(() => {
+      pushAi(nextQ);
+    }, 1500);
   };
 
   const timeLabel = useMemo(() => {
