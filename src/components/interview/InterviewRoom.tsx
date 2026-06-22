@@ -98,18 +98,30 @@ export default function InterviewRoom({ role }: { role: Role }) {
   };
 
   const generateQuestion = async () => {
+  try {
     const res = await fetch(`${BASE_URL}/generate-question`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         role: role.id,
         history: historyRef.current,
         difficulty,
       }),
     });
+
     const data = await res.json();
-    return data.question;
-  };
+
+    console.log("QUESTION =>", data);
+
+    return data.question || "Can you explain one recent project you worked on?";
+  } catch (err) {
+    console.error(err);
+
+    return "Can you explain one recent project you worked on?";
+  }
+};
 
   const evaluateAnswer = async (question: string, answer: string) => {
     const res = await fetch(`${BASE_URL}/evaluate-answer`, {
@@ -155,15 +167,33 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
     const feedback = await evaluateAnswer(currentQ, text);
 
-    pushAi(
-      `Score: ${feedback.score}/10\n\nStrengths:\n- ${feedback.strengths.join(
-        "\n- "
-      )}\n\nWeaknesses:\n- ${feedback.weaknesses.join(
-        "\n- "
-      )}\n\nImproved:\n${feedback.improved_answer}`,
-      THINK_MS
-    );
+console.log("Feedback =>", feedback);
 
+const score = feedback?.score ?? 0;
+const strengths = Array.isArray(feedback?.strengths)
+  ? feedback.strengths
+  : ["No strengths returned"];
+
+const weaknesses = Array.isArray(feedback?.weaknesses)
+  ? feedback.weaknesses
+  : ["No weaknesses returned"];
+
+const improved =
+  feedback?.improved_answer || "No improved answer returned";
+
+pushAi(
+  `Score: ${score}/10
+
+Strengths:
+- ${strengths.join("\n- ")}
+
+Weaknesses:
+- ${weaknesses.join("\n- ")}
+
+Improved:
+${improved}`,
+  THINK_MS
+);
     // ✅ CODING ROUND TRIGGER
     if (historyRef.current.length >= 3) {
       setTimeout(() => {
