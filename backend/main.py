@@ -18,6 +18,9 @@ app.add_middleware(
 # ---------- GROQ ----------
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+# ---------- GLOBAL RESUME STORE (NEW - 5.1) ----------
+RESUME_TEXT = ""
+
 # ---------- MODELS ----------
 class QuestionRequest(BaseModel):
     role: str
@@ -31,18 +34,41 @@ class AnswerRequest(BaseModel):
     code: str = ""
 
 
+# ---------- NEW MODEL (5.1) ----------
+class ResumeRequest(BaseModel):
+    text: str
+
+
+# ---------- UPLOAD RESUME API (5.1) ----------
+@app.post("/upload-resume")
+def upload_resume(req: ResumeRequest):
+    global RESUME_TEXT
+    RESUME_TEXT = req.text
+
+    return {
+        "message": "Resume stored successfully"
+    }
+
+
 # ---------- GENERATE QUESTION ----------
 @app.post("/generate-question")
 def generate_question(req: QuestionRequest):
+
+    # ---------- 5.2 ADD (Resume Context) ----------
+    resume_context = f"\nCandidate Resume:\n{RESUME_TEXT}\n" if RESUME_TEXT else ""
+
     prompt = f"""
 You are a {req.role} interviewer.
 
 Difficulty: {req.difficulty}
 
+{resume_context}
+
 Previous conversation:
 {req.history}
 
 Ask ONE new interview question.
+If resume is provided, ask question based on candidate experience.
 """
 
     res = client.chat.completions.create(
@@ -58,11 +84,19 @@ Ask ONE new interview question.
 # ---------- EVALUATE ANSWER ----------
 @app.post("/evaluate-answer")
 def evaluate_answer(req: AnswerRequest):
+
+    # ---------- 5.3 ADD (Resume Context) ----------
+    resume_context = f"\nCandidate Resume:\n{RESUME_TEXT}\n" if RESUME_TEXT else ""
+
     prompt = f"""
 You are an interviewer.
 
+{resume_context}
+
 Question: {req.question}
 Answer: {req.answer}
+
+Evaluate answer considering candidate's resume if provided.
 
 Return ONLY valid JSON.
 
