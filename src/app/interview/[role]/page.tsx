@@ -1,3 +1,4 @@
+"use client";
 import { notFound } from "next/navigation";
 import { getRole } from "@/lib/data";
 import InterviewRoom from "@/components/interview/InterviewRoom";
