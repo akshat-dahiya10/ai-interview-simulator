@@ -1,23 +1,17 @@
 import { notFound } from "next/navigation";
 import { getRole } from "@/lib/data";
-import ClientInterviewPage from "./ClientInterviewPage";
+import ClientPage from "./ClientPage";
 
 export default function Page({
   params,
 }: {
-  params: { role?: string };
+  params: { role: string };
 }) {
-  const role = params.role;
-
-  if (!role) {
-    notFound();
-  }
-
-  const roleData = getRole(role.toLowerCase().trim());
+  const roleData = getRole(params.role);
 
   if (!roleData) {
     notFound();
   }
 
-  return <ClientInterviewPage role={roleData} />;
+  return <ClientPage role={roleData} />;
 }
