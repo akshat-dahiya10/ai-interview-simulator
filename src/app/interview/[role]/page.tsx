@@ -3,13 +3,14 @@ import { getRole } from "@/lib/data";
 import ClientPage from "./ClientPage";
 
 export default function Page({ params }: { params: { role: string } }) {
-  console.log("PARAM ROLE:", params.role); // debug
+  const cleanRole = decodeURIComponent(params.role).toLowerCase().trim();
 
-  const roleData = getRole(params.role);
+  console.log("ROLE:", cleanRole);
+
+  const roleData = getRole(cleanRole);
 
   if (!roleData) {
-    console.log("ROLE NOT FOUND");
-    notFound();
+    return <div style={{ color: "white" }}>Role not found: {cleanRole}</div>;
   }
 
   return <ClientPage role={roleData} />;
