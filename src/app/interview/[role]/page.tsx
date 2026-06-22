@@ -1,18 +1,24 @@
+import { notFound } from "next/navigation";
 import { getRole } from "@/lib/data";
 import ClientPage from "./ClientPage";
 
-export default function Page({ params }: { params: { role: string } }) {
-  console.log("SERVER PARAMS:", params);
+export default function Page({
+  params,
+}: {
+  params: { role: string };
+}) {
+  const role = params.role;
 
-  if (!params?.role) {
-    return <div>Role missing</div>;
+  if (!role) {
+    console.log("Role missing:", role);
+    notFound();
   }
 
-  const cleanRole = params.role.toLowerCase().trim();
-  const roleData = getRole(cleanRole);
+  const roleData = getRole(role.toLowerCase().trim());
 
   if (!roleData) {
-    return <div>Role not found: {cleanRole}</div>;
+    console.log("Role not found:", role);
+    notFound();
   }
 
   return <ClientPage role={roleData} />;
