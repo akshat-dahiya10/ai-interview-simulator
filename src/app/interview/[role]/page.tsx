@@ -2,8 +2,14 @@ import { notFound } from "next/navigation";
 import { getRole } from "@/lib/data";
 import ClientPage from "./ClientPage";
 
-export default function Page({ params }: { params: { role: string } }) {
-  const cleanRole = decodeURIComponent(params.role).toLowerCase().trim();
+export default function Page({
+  params,
+}: {
+  params: { role: string };
+}) {
+  const role = params.role;
+
+  const cleanRole = decodeURIComponent(role).toLowerCase().trim();
 
   console.log("ROLE:", cleanRole);
 
@@ -13,5 +19,5 @@ export default function Page({ params }: { params: { role: string } }) {
     return <div style={{ color: "white" }}>Role not found: {cleanRole}</div>;
   }
 
-  return <ClientPage role={roleData} />;
+  return <InterviewRoom role={roleData} />;
 }
