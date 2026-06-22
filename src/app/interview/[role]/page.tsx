@@ -1,8 +1,6 @@
 import { notFound } from "next/navigation";
 import { getRole } from "@/lib/data";
-import InterviewRoom from "@/components/interview/InterviewRoom";
-
-export const dynamic = "force-dynamic";
+import ClientPage from "./ClientPage";
 
 export default function Page({
   params,
@@ -11,18 +9,16 @@ export default function Page({
 }) {
   const role = params.role?.toLowerCase().trim();
 
-  console.log("ROLE:", role); // debug
+  console.log("ROLE:", role);
 
-  if (!role) {
-    notFound();
-  }
+  if (!role) return notFound();
 
   const roleData = getRole(role);
 
   if (!roleData) {
-    console.log("Role not found in data:", role);
-    notFound();
+    console.log("NOT FOUND ROLE:", role);
+    return notFound();
   }
 
-  return <InterviewRoom role={roleData} />;
+  return <ClientPage role={roleData} />;
 }
