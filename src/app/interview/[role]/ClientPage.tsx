@@ -1,7 +1,9 @@
 "use client";
 
-import InterviewRoom from "@/components/interview/InterviewRoom";
-
 export default function ClientPage({ role }: any) {
-  return <InterviewRoom role={role} />;
+  return (
+    <div>
+      <h1>{role.name}</h1>
+    </div>
+  );
 }
