@@ -9,15 +9,18 @@ export default function Page({
 }: {
   params: { role: string };
 }) {
-  const role = params.role;
+  const role = params.role?.toLowerCase().trim();
+
+  console.log("ROLE:", role); // debug
 
   if (!role) {
     notFound();
   }
 
-  const roleData = getRole(role.toLowerCase().trim());
+  const roleData = getRole(role);
 
   if (!roleData) {
+    console.log("Role not found in data:", role);
     notFound();
   }
 
