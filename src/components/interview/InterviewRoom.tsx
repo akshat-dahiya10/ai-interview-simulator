@@ -10,7 +10,8 @@ import {
 import { ArrowRight, Mic } from "lucide-react";
 import type { ChatMessage, Role } from "@/lib/types";
 import ChatBubble from "@/components/chat/ChatBubble";
-import CodingRound from "@/components/interview/CodingRound"; // ✅ ADD
+import CodingRound from "@/components/interview/CodingRound"; 
+import { resumeText } from "@/lib/resumeStore";
 
 const THINK_MS = 800;
 
@@ -105,10 +106,11 @@ export default function InterviewRoom({ role }: { role: Role }) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        role: role.id,
-        history: historyRef.current,
-        difficulty,
-      }),
+  role: role.id,
+  history: historyRef.current,
+  difficulty,
+  resume: resumeText,
+}),
     });
 
     const data = await res.json();
