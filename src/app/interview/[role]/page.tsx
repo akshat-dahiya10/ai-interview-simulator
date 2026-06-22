@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getRole } from "@/lib/data";
 import ClientPage from "./ClientPage";
+import InterviewRoom from "@/components/interview/InterviewRoom";
 
 export default function Page({
   params,
