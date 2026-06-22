@@ -64,10 +64,10 @@ You are an interviewer.
 Question: {req.question}
 Answer: {req.answer}
 
-Give response in JSON format:
+Return ONLY valid JSON.
 
 {{
-  "score": number (0-10),
+  "score": number,
   "strengths": ["point1", "point2"],
   "weaknesses": ["point1", "point2"],
   "improved_answer": "better version"
@@ -76,14 +76,26 @@ Give response in JSON format:
 
     res = client.chat.completions.create(
         model="llama3-8b-8192",
-        messages=[{"role": "user", "content": prompt}]
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
     )
 
     import json
 
+    content = res.choices[0].message.content.strip()
+
+    # remove markdown json fences
+    content = content.replace("```json", "")
+    content = content.replace("```", "")
+    content = content.strip()
+
     try:
-        data = json.loads(res.choices[0].message.content)
-    except:
+        data = json.loads(content)
+    except Exception as e:
+        print("JSON ERROR:", e)
+        print("RAW RESPONSE:", content)
+
         data = {
             "score": 5,
             "strengths": ["Good attempt"],
