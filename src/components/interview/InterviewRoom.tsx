@@ -109,7 +109,6 @@ export default function InterviewRoom({ role }: { role: Role }) {
   role: role.id,
   history: historyRef.current,
   difficulty,
-  resume: resumeText,
 }),
     });
 
