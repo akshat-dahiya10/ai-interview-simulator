@@ -1,4 +1,5 @@
 "use client";
+
 import { notFound } from "next/navigation";
 import { getRole } from "@/lib/data";
 import InterviewRoom from "@/components/interview/InterviewRoom";
@@ -17,36 +18,36 @@ export default function Page({
 
   const role = params.role;
 
+  console.log("ROLE:", role); // debug
+
   if (!role) {
-    notFound();
+    return <div className="text-white">Role missing</div>;
   }
 
   const roleData = getRole(role.toLowerCase().trim());
 
+  console.log("ROLE DATA:", roleData); // debug
+
   if (!roleData) {
-    notFound();
+    return <div className="text-white">Role not found: {role}</div>;
   }
 
-  // 👉 INTERVIEW START HONE KE BAAD
   if (start) {
     return <InterviewRoom role={roleData} />;
   }
 
-  // 👉 START SCREEN UI
   return (
     <div className="h-screen flex flex-col items-center justify-center gap-6 text-white bg-black">
       <h1 className="text-2xl font-semibold">
         {roleData.title} Interview
       </h1>
 
-      {/* ✅ Resume Upload */}
       <ResumeUpload
         onUpload={(text: string) => {
           setResumeText(text);
         }}
       />
 
-      {/* ✅ Start Button */}
       <button
         onClick={() => setStart(true)}
         className="px-6 py-3 bg-white text-black rounded-xl"
