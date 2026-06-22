@@ -18,90 +18,77 @@ app.add_middleware(
 # ---------- GROQ ----------
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# ---------- MEMORY ----------
-sessions = {}
-
 # ---------- MODELS ----------
-class StartRequest(BaseModel):
+class QuestionRequest(BaseModel):
     role: str
-    level: str
+    difficulty: str
+    history: list
+
 
 class AnswerRequest(BaseModel):
-    session_id: str
+    question: str
     answer: str
+    code: str = ""
 
 
-# ---------- START ----------
-@app.post("/start")
-def start(req: StartRequest):
-    session_id = str(len(sessions) + 1)
+# ---------- GENERATE QUESTION ----------
+@app.post("/generate-question")
+def generate_question(req: QuestionRequest):
+    prompt = f"""
+You are a {req.role} interviewer.
 
-    first_question = "Tell me about yourself."
+Difficulty: {req.difficulty}
 
-    sessions[session_id] = {
-        "questions": [first_question],
-        "answers": []
-    }
+Previous conversation:
+{req.history}
+
+Ask ONE new interview question.
+"""
+
+    res = client.chat.completions.create(
+        model="llama3-8b-8192",
+        messages=[{"role": "user", "content": prompt}]
+    )
 
     return {
-        "session_id": session_id,
-        "question": first_question
+        "question": res.choices[0].message.content.strip()
     }
 
 
-# ---------- NEXT ----------
-@app.post("/next")
-def next_question(req: AnswerRequest):
-    session = sessions.get(req.session_id)
-
-    if not session:
-        return {"error": "Invalid session"}
-
-    last_question = session["questions"][-1]
-
-    # Save answer
-    session["answers"].append(req.answer)
-
-    # ---------- FEEDBACK ----------
-    feedback_prompt = f"""
+# ---------- EVALUATE ANSWER ----------
+@app.post("/evaluate-answer")
+def evaluate_answer(req: AnswerRequest):
+    prompt = f"""
 You are an interviewer.
 
-Question: {last_question}
+Question: {req.question}
 Answer: {req.answer}
 
-Give short, helpful feedback in 2-3 lines.
+Give response in JSON format:
+
+{{
+  "score": number (0-10),
+  "strengths": ["point1", "point2"],
+  "weaknesses": ["point1", "point2"],
+  "improved_answer": "better version"
+}}
 """
 
-    feedback_res = client.chat.completions.create(
+    res = client.chat.completions.create(
         model="llama3-8b-8192",
-        messages=[{"role": "user", "content": feedback_prompt}]
+        messages=[{"role": "user", "content": prompt}]
     )
 
-    feedback = feedback_res.choices[0].message.content.strip()
+    import json
 
-    # ---------- NEXT QUESTION ----------
-    next_prompt = f"""
-You are an interviewer.
+    try:
+        data = json.loads(res.choices[0].message.content)
+    except:
+        data = {
+            "score": 5,
+            "strengths": ["Good attempt"],
+            "weaknesses": ["Needs improvement"],
+            "improved_answer": req.answer
+        }
 
-Previous question: {last_question}
-Candidate answer: {req.answer}
-
-Ask a NEW interview question.
-DO NOT repeat previous question.
-Make it relevant to frontend role.
-"""
-
-    next_res = client.chat.completions.create(
-        model="llama3-8b-8192",
-        messages=[{"role": "user", "content": next_prompt}]
-    )
-
-    new_question = next_res.choices[0].message.content.strip()
-
-    # Save new question
-    session["questions"].append(new_question)
-
-    return {
-        "next_question": new_question,
-        "feedback": feedback
-    }
+    return data
