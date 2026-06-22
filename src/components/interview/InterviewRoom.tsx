@@ -11,7 +11,7 @@ import { ArrowRight, Mic } from "lucide-react";
 import type { ChatMessage, Role } from "@/lib/types";
 import ChatBubble from "@/components/chat/ChatBubble";
 import CodingRound from "@/components/interview/CodingRound"; 
-import { resumeText } from "@/lib/resumeStore";
+
 
 const THINK_MS = 800;
 
