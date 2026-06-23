@@ -10,8 +10,7 @@ import {
 import { ArrowRight, Mic } from "lucide-react";
 import type { ChatMessage, Role } from "@/lib/types";
 import ChatBubble from "@/components/chat/ChatBubble";
-import CodingRound from "@/components/interview/CodingRound"; 
-
+import CodingRound from "@/components/interview/CodingRound";
 
 const THINK_MS = 800;
 
@@ -25,7 +24,9 @@ export default function InterviewRoom({ role }: { role: Role }) {
   const [complete, setComplete] = useState(false);
   const [isListening, setIsListening] = useState(false);
 
-  const [round, setRound] = useState<"chat" | "coding">("chat"); // ✅ ADD
+  // ✅ IMPORTANT FIX: proper round system
+  const [round, setRound] = useState<"chat" | "coding">("chat");
+  const [codingQuestion, setCodingQuestion] = useState("");
 
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -99,30 +100,29 @@ export default function InterviewRoom({ role }: { role: Role }) {
   };
 
   const generateQuestion = async () => {
-  try {
-    const res = await fetch(`${BASE_URL}/generate-question`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-  role: role.id,
-  history: historyRef.current,
-  difficulty,
-}),
-    });
+    try {
+      const res = await fetch(`${BASE_URL}/generate-question`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          role: role.id,
+          history: historyRef.current,
+          difficulty,
+        }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    console.log("QUESTION =>", data);
-
-    return data.question || "Can you explain one recent project you worked on?";
-  } catch (err) {
-    console.error(err);
-
-    return "Can you explain one recent project you worked on?";
-  }
-};
+      return (
+        data.question ||
+        "Can you explain one recent project you worked on?"
+      );
+    } catch {
+      return "Can you explain one recent project you worked on?";
+    }
+  };
 
   const evaluateAnswer = async (question: string, answer: string) => {
     const res = await fetch(`${BASE_URL}/evaluate-answer`, {
@@ -134,6 +134,7 @@ export default function InterviewRoom({ role }: { role: Role }) {
         code,
       }),
     });
+
     return await res.json();
   };
 
@@ -149,6 +150,13 @@ export default function InterviewRoom({ role }: { role: Role }) {
     const id = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(id);
   }, [complete]);
+
+  // ✅ improved detection
+  const isCodingQuestion = (text: string) => {
+    return /code|write|program|implement|leetcode|function|algorithm/i.test(
+      text
+    );
+  };
 
   const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -168,22 +176,14 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
     const feedback = await evaluateAnswer(currentQ, text);
 
-console.log("Feedback =>", feedback);
+    const score = feedback?.score ?? 0;
+    const strengths = feedback?.strengths ?? [];
+    const weaknesses = feedback?.weaknesses ?? [];
+    const improved =
+      feedback?.improved_answer || "No improved answer returned";
 
-const score = feedback?.score ?? 0;
-const strengths = Array.isArray(feedback?.strengths)
-  ? feedback.strengths
-  : ["No strengths returned"];
-
-const weaknesses = Array.isArray(feedback?.weaknesses)
-  ? feedback.weaknesses
-  : ["No weaknesses returned"];
-
-const improved =
-  feedback?.improved_answer || "No improved answer returned";
-
-pushAi(
-  `Score: ${score}/10
+    pushAi(
+      `Score: ${score}/10
 
 Strengths:
 - ${strengths.join("\n- ")}
@@ -193,46 +193,57 @@ Weaknesses:
 
 Improved:
 ${improved}`,
-  THINK_MS
-);
-    // ✅ CODING ROUND TRIGGER
-    if (historyRef.current.length >= 3) {
+      THINK_MS
+    );
+
+    const nextQ = await generateQuestion();
+    currentQuestionRef.current = nextQ;
+    historyRef.current.push({ question: nextQ, answer: "" });
+
+    // 🔥 AUTO SWITCH TO CODING ROUND
+    if (isCodingQuestion(nextQ)) {
+      setCodingQuestion(nextQ);
+
       setTimeout(() => {
         setRound("coding");
       }, 1200);
+
       return;
     }
+
+    setTimeout(() => pushAi(nextQ), 1200);
 
     if (historyRef.current.length >= 5) {
       setTimeout(() => {
         setComplete(true);
         pushAi("Interview completed");
       }, 1200);
-      return;
     }
-
-    const nextQ = await generateQuestion();
-    currentQuestionRef.current = nextQ;
-    historyRef.current.push({ question: nextQ, answer: "" });
-
-    setTimeout(() => pushAi(nextQ), 1200);
   };
 
   const timeLabel = useMemo(() => {
-    const m = Math.floor(elapsed / 60).toString().padStart(2, "0");
+    const m = Math.floor(elapsed / 60)
+      .toString()
+      .padStart(2, "0");
     const s = (elapsed % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
   }, [elapsed]);
 
-  // ✅ SWITCH UI
+  // ✅ CODING ROUND VIEW
   if (round === "coding") {
-    return <CodingRound />;
+    return (
+      <CodingRound
+        question={codingQuestion}
+        onExit={() => setRound("chat")}
+      />
+    );
   }
 
+  // ================= CHAT UI =================
   return (
     <div className="h-screen w-full bg-gradient-to-br from-black via-[#0a0a12] to-[#05050a] text-white flex flex-col">
 
-      <div className="flex justify-between items-center px-6 py-4 border-b border-white/10 backdrop-blur-xl">
+      <div className="flex justify-between items-center px-6 py-4 border-b border-white/10">
         <h1 className="text-xl font-semibold">{role.title} Interview</h1>
         <span className="text-white/60">{timeLabel}</span>
       </div>
@@ -246,7 +257,7 @@ ${improved}`,
               className={`px-4 py-1 rounded-lg text-sm ${
                 difficulty === lvl
                   ? "bg-white text-black"
-                  : "text-white/60 hover:text-white"
+                  : "text-white/60"
               }`}
             >
               {lvl}
@@ -255,69 +266,49 @@ ${improved}`,
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 space-y-4">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-6 py-8 space-y-4"
+      >
         {messages.map((m) => (
-          <div key={m.id} className="animate-[fadeIn_0.4s_ease]">
-            <ChatBubble message={m} />
-          </div>
+          <ChatBubble key={m.id} message={m} />
         ))}
-        {typing && <div className="text-white/40 animate-pulse">AI is typing...</div>}
+
+        {typing && (
+          <div className="text-white/40 animate-pulse">
+            AI is typing...
+          </div>
+        )}
       </div>
 
       <div className="px-6 pb-6">
-        {currentQuestionRef.current.toLowerCase().includes("code") && (
-          <textarea
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className="w-full mb-3 h-32 bg-black border border-green-500/20 rounded-xl p-3 text-green-400 font-mono"
-            placeholder="Write your code..."
-          />
-        )}
-
         <form
           onSubmit={handleSend}
-          className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 backdrop-blur-xl"
+          className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3"
         >
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            className="flex-1 bg-transparent outline-none resize-none text-white placeholder-white/30"
+            className="flex-1 bg-transparent outline-none resize-none"
             placeholder="Type your answer..."
           />
 
           <button
             type="button"
             onClick={startListening}
-            className={`w-10 h-10 flex items-center justify-center rounded-full transition ${
-              isListening
-                ? "bg-red-500 animate-pulse"
-                : "bg-white/10 hover:bg-white/20"
-            }`}
+            className="w-10 h-10 rounded-full bg-white/10"
           >
             <Mic size={18} />
           </button>
 
           <button
             type="submit"
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-white text-black hover:scale-105 transition"
+            className="w-10 h-10 rounded-full bg-white text-black"
           >
             <ArrowRight size={18} />
           </button>
         </form>
       </div>
-
-      <style jsx global>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
     </div>
   );
 }
