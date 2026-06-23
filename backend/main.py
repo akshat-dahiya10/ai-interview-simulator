@@ -51,11 +51,12 @@ class ResumeRequest(BaseModel):
 def upload_resume(req: ResumeRequest):
     global RESUME_TEXT
     RESUME_TEXT = req.text
-
     return {"message": "Resume stored successfully"}
 
 
-# ---------- GENERATE QUESTION ----------
+# =========================================================
+# ✅ FIXED QUESTION GENERATION (NO GITHUB / NO MULTI FILE)
+# =========================================================
 @app.post("/generate-question")
 def generate_question(req: QuestionRequest):
 
@@ -71,8 +72,15 @@ Difficulty: {req.difficulty}
 Previous conversation:
 {req.history}
 
-Ask ONE new interview question.
-If resume is provided, ask based on experience.
+STRICT RULES:
+- Ask ONLY ONE coding question
+- Must be solvable in a SINGLE code editor
+- DO NOT ask for multiple files
+- DO NOT ask for GitHub repo
+- DO NOT ask for project submission
+- Keep it practical and interview-focused
+
+Return ONLY the question.
 """
 
     res = client.chat.completions.create(
@@ -85,7 +93,7 @@ If resume is provided, ask based on experience.
     }
 
 
-# ---------- EVALUATE ANSWER (OLD - KEEP AS IT IS) ----------
+# ---------- OLD EVALUATION (KEEP SAME) ----------
 @app.post("/evaluate-answer")
 def evaluate_answer(req: AnswerRequest):
 
@@ -114,12 +122,11 @@ Return ONLY JSON:
     )
 
     content = res.choices[0].message.content.strip()
-
     content = content.replace("```json", "").replace("```", "").strip()
 
     try:
         data = json.loads(content)
-    except Exception:
+    except:
         data = {
             "score": 5,
             "strengths": ["Good attempt"],
@@ -130,9 +137,17 @@ Return ONLY JSON:
     return data
 
 
-# ---------- RUN CODE ----------
+# =========================================================
+# 🚀 RUN CODE (WITH BASIC VALIDATION)
+# =========================================================
 @app.post("/run-code")
 def run_code(req: CodeRequest):
+
+    if not req.code.strip():
+        return {
+            "output": "❌ No code provided",
+            "status": {"description": "Empty Code"}
+        }
 
     try:
         url = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
@@ -178,16 +193,26 @@ def run_code(req: CodeRequest):
 
 
 # =========================================================
-# 🚀 PRO MAX EVALUATION (ADDED - NO BREAKING CHANGE)
+# 🚀 PRO MAX EVALUATION (REALISTIC FIXED VERSION)
 # =========================================================
-
 @app.post("/evaluate-answer-pro")
 def evaluate_answer_pro(req: AnswerRequest):
+
+    # ❌ EMPTY CODE CHECK
+    if not req.code.strip():
+        return {
+            "final_score": 0,
+            "passed_tests": 0,
+            "total_tests": 5,
+            "feedback": "No code submitted",
+            "mistakes": ["Empty code"],
+            "improved_solution": "Write a valid solution first"
+        }
 
     resume_context = f"\nCandidate Resume:\n{RESUME_TEXT}\n" if RESUME_TEXT else ""
 
     prompt = f"""
-You are a FAANG-level strict coding interviewer.
+You are a strict coding interviewer.
 
 {resume_context}
 
@@ -226,21 +251,23 @@ Return ONLY JSON:
         data = json.loads(content)
     except:
         data = {
-            "logic_score": 60,
-            "edge_case_score": 50,
-            "complexity_score": 55,
+            "logic_score": 50,
+            "edge_case_score": 40,
+            "complexity_score": 45,
             "mistakes": ["Parsing error"],
-            "improved_solution": "Improve edge cases",
-            "feedback": "Partial evaluation"
+            "improved_solution": "Improve logic",
+            "feedback": "Evaluation failed partially"
         }
 
+    # 🎯 REALISTIC SCORE
     final_score = int(
         (data["logic_score"] * 0.5) +
         (data["edge_case_score"] * 0.3) +
         (data["complexity_score"] * 0.2)
     )
 
-    passed_tests = max(1, min(5, int(final_score / 20)))
+    # 🎯 CONTROLLED TEST CASES (NOT RANDOM)
+    passed_tests = 0 if final_score < 40 else min(5, int(final_score / 20))
 
     return {
         "final_score": final_score,
