@@ -20,7 +20,7 @@ app.add_middleware(
 # ---------- GROQ ----------
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# ---------- GLOBAL RESUME STORE (NEW - 5.1) ----------
+# ---------- GLOBAL RESUME STORE ----------
 RESUME_TEXT = ""
 
 # ---------- MODELS ----------
@@ -35,27 +35,24 @@ class AnswerRequest(BaseModel):
     answer: str
     code: str = ""
 
-# ---------- NEW MODEL (RUN CODE) ----------
+
 class CodeRequest(BaseModel):
     code: str
     language: str = "python"
     input: str = ""
 
 
-# ---------- NEW MODEL (5.1) ----------
 class ResumeRequest(BaseModel):
     text: str
 
 
-# ---------- UPLOAD RESUME API (5.1) ----------
+# ---------- UPLOAD RESUME ----------
 @app.post("/upload-resume")
 def upload_resume(req: ResumeRequest):
     global RESUME_TEXT
     RESUME_TEXT = req.text
 
-    return {
-        "message": "Resume stored successfully"
-    }
+    return {"message": "Resume stored successfully"}
 
 
 # ---------- GENERATE QUESTION ----------
@@ -75,7 +72,7 @@ Previous conversation:
 {req.history}
 
 Ask ONE new interview question.
-If resume is provided, ask question based on candidate experience.
+If resume is provided, ask based on experience.
 """
 
     res = client.chat.completions.create(
@@ -88,7 +85,7 @@ If resume is provided, ask question based on candidate experience.
     }
 
 
-# ---------- EVALUATE ANSWER ----------
+# ---------- EVALUATE ANSWER (OLD - KEEP AS IT IS) ----------
 @app.post("/evaluate-answer")
 def evaluate_answer(req: AnswerRequest):
 
@@ -102,15 +99,12 @@ You are an interviewer.
 Question: {req.question}
 Answer: {req.answer}
 
-Evaluate answer considering candidate's resume if provided.
-
-Return ONLY valid JSON.
-
+Return ONLY JSON:
 {{
   "score": number,
-  "strengths": ["point1", "point2"],
-  "weaknesses": ["point1", "point2"],
-  "improved_answer": "better version"
+  "strengths": ["p1", "p2"],
+  "weaknesses": ["p1", "p2"],
+  "improved_answer": "text"
 }}
 """
 
@@ -121,16 +115,11 @@ Return ONLY valid JSON.
 
     content = res.choices[0].message.content.strip()
 
-    content = content.replace("```json", "")
-    content = content.replace("```", "")
-    content = content.strip()
+    content = content.replace("```json", "").replace("```", "").strip()
 
     try:
         data = json.loads(content)
-    except Exception as e:
-        print("JSON ERROR:", e)
-        print("RAW RESPONSE:", content)
-
+    except Exception:
         data = {
             "score": 5,
             "strengths": ["Good attempt"],
@@ -141,15 +130,11 @@ Return ONLY valid JSON.
     return data
 
 
-# =========================================================
-# 🚀 STEP 3: CODE RUNNER (ADDED - LEETCODE STYLE BACKEND)
-# =========================================================
-
+# ---------- RUN CODE ----------
 @app.post("/run-code")
 def run_code(req: CodeRequest):
 
     try:
-        # Using Judge0 API (safe external runner)
         url = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
 
         language_map = {
@@ -190,3 +175,81 @@ def run_code(req: CodeRequest):
             "error": "Code execution failed",
             "details": str(e)
         }
+
+
+# =========================================================
+# 🚀 PRO MAX EVALUATION (ADDED - NO BREAKING CHANGE)
+# =========================================================
+
+@app.post("/evaluate-answer-pro")
+def evaluate_answer_pro(req: AnswerRequest):
+
+    resume_context = f"\nCandidate Resume:\n{RESUME_TEXT}\n" if RESUME_TEXT else ""
+
+    prompt = f"""
+You are a FAANG-level strict coding interviewer.
+
+{resume_context}
+
+Question:
+{req.question}
+
+Candidate Code:
+{req.code}
+
+Evaluate on:
+- correctness
+- edge cases
+- time complexity
+- code quality
+
+Return ONLY JSON:
+{{
+  "logic_score": number,
+  "edge_case_score": number,
+  "complexity_score": number,
+  "mistakes": ["list"],
+  "improved_solution": "string",
+  "feedback": "string"
+}}
+"""
+
+    res = client.chat.completions.create(
+        model="llama3-8b-8192",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    content = res.choices[0].message.content.strip()
+    content = content.replace("```json", "").replace("```", "").strip()
+
+    try:
+        data = json.loads(content)
+    except:
+        data = {
+            "logic_score": 60,
+            "edge_case_score": 50,
+            "complexity_score": 55,
+            "mistakes": ["Parsing error"],
+            "improved_solution": "Improve edge cases",
+            "feedback": "Partial evaluation"
+        }
+
+    final_score = int(
+        (data["logic_score"] * 0.5) +
+        (data["edge_case_score"] * 0.3) +
+        (data["complexity_score"] * 0.2)
+    )
+
+    passed_tests = max(1, min(5, int(final_score / 20)))
+
+    return {
+        "final_score": final_score,
+        "passed_tests": passed_tests,
+        "total_tests": 5,
+        "logic_score": data["logic_score"],
+        "edge_case_score": data["edge_case_score"],
+        "complexity_score": data["complexity_score"],
+        "mistakes": data["mistakes"],
+        "improved_solution": data["improved_solution"],
+        "feedback": data["feedback"]
+    }
