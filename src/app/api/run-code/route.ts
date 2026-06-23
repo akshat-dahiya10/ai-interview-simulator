@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
+import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 
@@ -7,11 +7,11 @@ export async function POST(req: NextRequest) {
   try {
     const { code, language } = await req.json();
 
-    if (!code) {
-      return NextResponse.json({ error: "No code provided" });
+    if (!code || !language) {
+      return NextResponse.json({ error: "Code or language missing" });
     }
 
-    // 🧠 TEST CASES (REAL)
+    // ================= TEST CASES =================
     const testCases = [
       { input: "1 2 3", output: "6" },
       { input: "5 5", output: "10" },
@@ -20,37 +20,50 @@ export async function POST(req: NextRequest) {
       { input: "100", output: "100" },
     ];
 
-    const filePath = path.join(process.cwd(), "temp");
+    // ================= TEMP FOLDER =================
+    const tempDir = path.join(process.cwd(), "temp");
 
-    if (!fs.existsSync(filePath)) {
-      fs.mkdirSync(filePath);
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir);
     }
 
-    let fileName = "";
-    let command = "";
+    // ================= FILE SETUP =================
+    const fileName =
+      language === "javascript"
+        ? path.join(tempDir, "code.js")
+        : path.join(tempDir, "code.py");
 
-    // ================= LANGUAGE HANDLING =================
-    if (language === "javascript") {
-      fileName = path.join(filePath, "code.js");
-      fs.writeFileSync(fileName, code);
-
-      command = `node ${fileName}`;
-    } else if (language === "python") {
-      fileName = path.join(filePath, "code.py");
-      fs.writeFileSync(fileName, code);
-
-      command = `python3 ${fileName}`;
-    }
+    fs.writeFileSync(fileName, code);
 
     let passed = 0;
-    let results: any[] = [];
+    const results: any[] = [];
 
     // ================= RUN TEST CASES =================
     for (const test of testCases) {
       const output = await new Promise<string>((resolve) => {
-        exec(command, { input: test.input }, (error, stdout) => {
-          if (error) return resolve("ERROR");
-          resolve(stdout.trim());
+        let result = "";
+
+        const child =
+          language === "javascript"
+            ? spawn("node", [fileName])
+            : spawn("python3", [fileName]);
+
+        // 👉 INPUT SEND
+        child.stdin.write(test.input);
+        child.stdin.end();
+
+        // 👉 OUTPUT COLLECT
+        child.stdout.on("data", (data) => {
+          result += data.toString();
+        });
+
+        // 👉 ERROR HANDLE
+        child.stderr.on("data", () => {
+          resolve("ERROR");
+        });
+
+        child.on("close", () => {
+          resolve(result.trim());
         });
       });
 
@@ -77,8 +90,8 @@ export async function POST(req: NextRequest) {
       score,
       details: results,
     });
-
   } catch (err) {
+    console.error(err);
     return NextResponse.json({ error: "Execution failed" });
   }
 }
