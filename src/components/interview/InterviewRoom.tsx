@@ -18,17 +18,16 @@ export default function InterviewRoom({ role }: { role: Role }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typing, setTyping] = useState(false);
   const [input, setInput] = useState("");
-  const [code, setCode] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
   const [elapsed, setElapsed] = useState(0);
   const [complete, setComplete] = useState(false);
   const [isListening, setIsListening] = useState(false);
 
-  // ✅ IMPORTANT FIX: proper round system
+  // ================= ROUND SYSTEM =================
   const [round, setRound] = useState<"chat" | "coding">("chat");
   const [codingQuestion, setCodingQuestion] = useState("");
+  const [canResumeCoding, setCanResumeCoding] = useState(false);
 
-  const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<any[]>([]);
   const currentQuestionRef = useRef<string>("");
@@ -37,12 +36,14 @@ export default function InterviewRoom({ role }: { role: Role }) {
     process.env.NEXT_PUBLIC_BACKEND_URL ||
     "https://ai-interview-simulator-production-10.up.railway.app";
 
+  // ================= SCROLL =================
   const scrollToBottom = () => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   };
 
+  // ================= TYPE EFFECT =================
   const typeText = (text: string, callback: (t: string) => void) => {
     let i = 0;
     let current = "";
@@ -77,35 +78,12 @@ export default function InterviewRoom({ role }: { role: Role }) {
     }, delay);
   };
 
-  const startListening = () => {
-    if (!("webkitSpeechRecognition" in window)) return;
-
-    const SpeechRecognition =
-      (window as any).webkitSpeechRecognition ||
-      (window as any).SpeechRecognition;
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInput(transcript);
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-  };
-
+  // ================= QUESTION GENERATION =================
   const generateQuestion = async () => {
     try {
       const res = await fetch(`${BASE_URL}/generate-question`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: role.id,
           history: historyRef.current,
@@ -114,35 +92,18 @@ export default function InterviewRoom({ role }: { role: Role }) {
       });
 
       const data = await res.json();
-
-      return (
-        data.question ||
-        "Can you explain one recent project you worked on?"
-      );
+      return data.question || "Explain a project you worked on.";
     } catch {
-      return "Can you explain one recent project you worked on?";
+      return "Explain a project you worked on.";
     }
   };
 
-  const evaluateAnswer = async (question: string, answer: string) => {
-    const res = await fetch(`${BASE_URL}/evaluate-answer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        question,
-        answer,
-        code,
-      }),
-    });
-
-    return await res.json();
-  };
-
+  // ================= INIT =================
   useEffect(() => {
     const firstQ = "Tell me about yourself.";
     currentQuestionRef.current = firstQ;
     historyRef.current = [{ question: firstQ, answer: "" }];
-    pushAi(`Welcome to ${role.title} interview\n\n${firstQ}`, 600);
+    pushAi(`Welcome to ${role.title}\n\n${firstQ}`, 600);
   }, []);
 
   useEffect(() => {
@@ -151,13 +112,14 @@ export default function InterviewRoom({ role }: { role: Role }) {
     return () => clearInterval(id);
   }, [complete]);
 
-  // ✅ improved detection
+  // ================= DETECT CODING =================
   const isCodingQuestion = (text: string) => {
     return /code|write|program|implement|leetcode|function|algorithm/i.test(
       text
     );
   };
 
+  // ================= SEND ANSWER =================
   const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
 
@@ -171,47 +133,24 @@ export default function InterviewRoom({ role }: { role: Role }) {
 
     setInput("");
 
-    const currentQ = currentQuestionRef.current;
     historyRef.current[historyRef.current.length - 1].answer = text;
-
-    const feedback = await evaluateAnswer(currentQ, text);
-
-    const score = feedback?.score ?? 0;
-    const strengths = feedback?.strengths ?? [];
-    const weaknesses = feedback?.weaknesses ?? [];
-    const improved =
-      feedback?.improved_answer || "No improved answer returned";
-
-    pushAi(
-      `Score: ${score}/10
-
-Strengths:
-- ${strengths.join("\n- ")}
-
-Weaknesses:
-- ${weaknesses.join("\n- ")}
-
-Improved:
-${improved}`,
-      THINK_MS
-    );
 
     const nextQ = await generateQuestion();
     currentQuestionRef.current = nextQ;
     historyRef.current.push({ question: nextQ, answer: "" });
 
-    // 🔥 AUTO SWITCH TO CODING ROUND
+    // ================= CODING TRIGGER =================
     if (isCodingQuestion(nextQ)) {
       setCodingQuestion(nextQ);
 
       setTimeout(() => {
         setRound("coding");
-      }, 1200);
+      }, 1000);
 
       return;
     }
 
-    setTimeout(() => pushAi(nextQ), 1200);
+    setTimeout(() => pushAi(nextQ), THINK_MS);
 
     if (historyRef.current.length >= 5) {
       setTimeout(() => {
@@ -221,20 +160,26 @@ ${improved}`,
     }
   };
 
+  const resumeCoding = () => {
+    setRound("coding");
+    setCanResumeCoding(false);
+  };
+
   const timeLabel = useMemo(() => {
-    const m = Math.floor(elapsed / 60)
-      .toString()
-      .padStart(2, "0");
+    const m = Math.floor(elapsed / 60).toString().padStart(2, "0");
     const s = (elapsed % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
   }, [elapsed]);
 
-  // ✅ CODING ROUND VIEW
+  // ================= CODING VIEW =================
   if (round === "coding") {
     return (
       <CodingRound
         question={codingQuestion}
-        onExit={() => setRound("chat")}
+        onExit={() => {
+          setRound("chat");
+          setCanResumeCoding(true);
+        }}
       />
     );
   }
@@ -243,11 +188,13 @@ ${improved}`,
   return (
     <div className="h-screen w-full bg-gradient-to-br from-black via-[#0a0a12] to-[#05050a] text-white flex flex-col">
 
+      {/* HEADER */}
       <div className="flex justify-between items-center px-6 py-4 border-b border-white/10">
         <h1 className="text-xl font-semibold">{role.title} Interview</h1>
         <span className="text-white/60">{timeLabel}</span>
       </div>
 
+      {/* DIFFICULTY */}
       <div className="flex justify-center py-4">
         <div className="flex gap-2 bg-white/5 border border-white/10 p-1 rounded-xl">
           {["easy", "medium", "hard"].map((lvl) => (
@@ -255,9 +202,7 @@ ${improved}`,
               key={lvl}
               onClick={() => setDifficulty(lvl)}
               className={`px-4 py-1 rounded-lg text-sm ${
-                difficulty === lvl
-                  ? "bg-white text-black"
-                  : "text-white/60"
+                difficulty === lvl ? "bg-white text-black" : "text-white/60"
               }`}
             >
               {lvl}
@@ -266,10 +211,8 @@ ${improved}`,
         </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-6 py-8 space-y-4"
-      >
+      {/* MESSAGES */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 space-y-4">
         {messages.map((m) => (
           <ChatBubble key={m.id} message={m} />
         ))}
@@ -281,6 +224,19 @@ ${improved}`,
         )}
       </div>
 
+      {/* RESUME BUTTON */}
+      {canResumeCoding && (
+        <div className="px-6 pb-2">
+          <button
+            onClick={resumeCoding}
+            className="bg-green-500 px-4 py-2 rounded-lg"
+          >
+            Resume Coding Round
+          </button>
+        </div>
+      )}
+
+      {/* INPUT */}
       <div className="px-6 pb-6">
         <form
           onSubmit={handleSend}
@@ -295,7 +251,6 @@ ${improved}`,
 
           <button
             type="button"
-            onClick={startListening}
             className="w-10 h-10 rounded-full bg-white/10"
           >
             <Mic size={18} />
