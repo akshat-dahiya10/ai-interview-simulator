@@ -25,15 +25,22 @@ export default function CodingRound({ question, onExit }: Props) {
   const [code, setCode] = useState(defaultCode["javascript"]);
   const [output, setOutput] = useState("");
 
-  // 🔥 upgraded scoring system
   const [score, setScore] = useState<number | null>(null);
   const [feedback, setFeedback] = useState("");
   const [hiddenTests, setHiddenTests] = useState<string>("");
 
   const runCode = async () => {
     try {
+      // 🚨 VALIDATION
+      if (!code || code.trim().length < 10) {
+        alert("Please write some valid code first.");
+        return;
+      }
+
       setOutput("Running...");
       setHiddenTests("");
+      setScore(null);
+      setFeedback("");
 
       // ================= RUN CODE =================
       const res = await fetch("/api/run-code", {
@@ -54,32 +61,39 @@ export default function CodingRound({ question, onExit }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: question || "Coding Problem",
-          answer: code, // 🔥 FIXED (IMPORTANT)
-          code,
+          answer: code,
+          language,
         }),
       });
 
       const evalData = await evalRes.json();
 
-      // ================= SCORE SYSTEM (0–100) =================
-      const finalScore =
-        evalData.score ||
-        Math.floor(Math.random() * 40 + 60); // fallback safe
+      console.log("Eval response:", evalData);
 
-      setScore(finalScore);
+      // ✅ REAL SCORE FROM BACKEND ONLY
+      if (typeof evalData.score === "number") {
+        setScore(evalData.score);
+      } else {
+        setScore(0);
+      }
 
-      // ================= HIDDEN TEST CASE SIMULATION =================
-      const passed = Math.floor((finalScore / 100) * 5);
-      setHiddenTests(`${passed}/5 test cases passed`);
+      // ✅ REAL TEST CASES (backend should send this)
+      if (evalData.passed_tests && evalData.total_tests) {
+        setHiddenTests(
+          `${evalData.passed_tests}/${evalData.total_tests} test cases passed`
+        );
+      } else {
+        setHiddenTests("Test case data not available");
+      }
 
-      // ================= AI FEEDBACK =================
+      // ✅ FEEDBACK
       setFeedback(
-        evalData.retry_suggestion ||
-        evalData.improved_answer ||
-        "Try improving edge cases and optimize your solution."
+        evalData.feedback ||
+          evalData.retry_suggestion ||
+          "Improve logic, handle edge cases, and optimize your solution."
       );
-
     } catch (err) {
+      console.error(err);
       setOutput("Error running code");
     }
   };
@@ -97,7 +111,7 @@ export default function CodingRound({ question, onExit }: Props) {
           {question || "Solve the problem"}
         </p>
 
-        {/* Hidden tests UI */}
+        {/* Test cases */}
         {hiddenTests && (
           <div className="mt-3 text-xs text-yellow-400">
             {hiddenTests}
@@ -132,7 +146,8 @@ export default function CodingRound({ question, onExit }: Props) {
 
           <button
             onClick={runCode}
-            className="flex items-center gap-2 bg-green-500 text-white px-3 py-1.5 rounded-md text-sm"
+            disabled={!code || code.trim().length < 10}
+            className="flex items-center gap-2 bg-green-500 text-white px-3 py-1.5 rounded-md text-sm disabled:opacity-50"
           >
             <Play size={16} />
             Run Code
@@ -153,7 +168,9 @@ export default function CodingRound({ question, onExit }: Props) {
 
         {/* OUTPUT */}
         <div className="p-3 bg-black/40 border border-white/10 rounded">
-          <pre className="text-green-400 text-sm">{output}</pre>
+          <pre className="text-green-400 text-sm whitespace-pre-wrap">
+            {output}
+          </pre>
         </div>
 
         {/* SCORE PANEL */}
