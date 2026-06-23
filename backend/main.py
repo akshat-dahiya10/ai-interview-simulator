@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
 import os
+import json
+import requests
 
 app = FastAPI()
 
@@ -33,6 +35,12 @@ class AnswerRequest(BaseModel):
     answer: str
     code: str = ""
 
+# ---------- NEW MODEL (RUN CODE) ----------
+class CodeRequest(BaseModel):
+    code: str
+    language: str = "python"
+    input: str = ""
+
 
 # ---------- NEW MODEL (5.1) ----------
 class ResumeRequest(BaseModel):
@@ -54,7 +62,6 @@ def upload_resume(req: ResumeRequest):
 @app.post("/generate-question")
 def generate_question(req: QuestionRequest):
 
-    # ---------- 5.2 ADD (Resume Context) ----------
     resume_context = f"\nCandidate Resume:\n{RESUME_TEXT}\n" if RESUME_TEXT else ""
 
     prompt = f"""
@@ -85,7 +92,6 @@ If resume is provided, ask question based on candidate experience.
 @app.post("/evaluate-answer")
 def evaluate_answer(req: AnswerRequest):
 
-    # ---------- 5.3 ADD (Resume Context) ----------
     resume_context = f"\nCandidate Resume:\n{RESUME_TEXT}\n" if RESUME_TEXT else ""
 
     prompt = f"""
@@ -110,16 +116,11 @@ Return ONLY valid JSON.
 
     res = client.chat.completions.create(
         model="llama3-8b-8192",
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
+        messages=[{"role": "user", "content": prompt}]
     )
-
-    import json
 
     content = res.choices[0].message.content.strip()
 
-    # remove markdown json fences
     content = content.replace("```json", "")
     content = content.replace("```", "")
     content = content.strip()
@@ -138,3 +139,54 @@ Return ONLY valid JSON.
         }
 
     return data
+
+
+# =========================================================
+# 🚀 STEP 3: CODE RUNNER (ADDED - LEETCODE STYLE BACKEND)
+# =========================================================
+
+@app.post("/run-code")
+def run_code(req: CodeRequest):
+
+    try:
+        # Using Judge0 API (safe external runner)
+        url = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
+
+        language_map = {
+            "python": 71,
+            "javascript": 63,
+            "cpp": 54
+        }
+
+        payload = {
+            "source_code": req.code,
+            "language_id": language_map.get(req.language, 71),
+            "stdin": req.input
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-RapidAPI-Key": os.getenv("RAPID_API_KEY"),
+            "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com"
+        }
+
+        response = requests.post(url, json=payload, headers=headers)
+        result = response.json()
+
+        output = (
+            result.get("stdout")
+            or result.get("stderr")
+            or result.get("compile_output")
+            or "No output"
+        )
+
+        return {
+            "output": output,
+            "status": result.get("status", {})
+        }
+
+    except Exception as e:
+        return {
+            "error": "Code execution failed",
+            "details": str(e)
+        }
