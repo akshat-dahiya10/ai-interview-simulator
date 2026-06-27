@@ -5,7 +5,7 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const res = await fetch(
-      "https://ai-interview-simulator-production-10.up.railway.app/evaluate-answer",
+      "https://ai-interview-simulator-production-10.up.railway.app/evaluate-answer-pro", // ✅ FIXED ENDPOINT
       {
         method: "POST",
         headers: {
@@ -13,12 +13,10 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify(body),
 
-        // ⛑️ prevent hanging requests
         signal: AbortSignal.timeout(15000),
       }
     );
 
-    // ❌ backend failure handling
     if (!res.ok) {
       const errorText = await res.text().catch(() => "");
 
@@ -35,18 +33,18 @@ export async function POST(req: Request) {
 
     const data = await res.json();
 
-    // 🧠 STANDARDIZED RESPONSE (IMPORTANT FOR YOUR UI)
+    // 🧠 NORMALIZED RESPONSE
     const normalized = {
       success: true,
 
-      // core scoring
+      // ✅ SCORE
       score:
         data?.score ??
         data?.result?.score ??
         data?.evaluation?.score ??
         0,
 
-      // feedback fields (multi-format safe)
+      // ✅ FEEDBACK
       feedback:
         data?.feedback ??
         data?.result?.feedback ??
@@ -64,10 +62,11 @@ export async function POST(req: Request) {
         data?.result?.improved_answer ??
         "",
 
-      // optional advanced fields (future-proof)
-      hidden_tests_passed:
+      // ✅ FIXED TEST CASE FIELDS (IMPORTANT)
+      passed_tests:
+        data?.passed_tests ??
         data?.hidden_tests_passed ??
-        data?.result?.hidden_tests_passed ??
+        data?.result?.passed_tests ??
         null,
 
       total_tests:
@@ -75,7 +74,6 @@ export async function POST(req: Request) {
         data?.result?.total_tests ??
         null,
 
-      // raw debug (safe for development)
       raw: data,
     };
 
