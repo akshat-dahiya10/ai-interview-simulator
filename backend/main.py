@@ -55,7 +55,7 @@ def upload_resume(req: ResumeRequest):
 
 
 # =========================================================
-# ✅ FIXED QUESTION GENERATION (NO GITHUB / NO MULTI FILE)
+# 🚀 FIXED QUESTION GENERATION (PRO LEVEL CONTROL)
 # =========================================================
 @app.post("/generate-question")
 def generate_question(req: QuestionRequest):
@@ -63,8 +63,9 @@ def generate_question(req: QuestionRequest):
     resume_context = f"\nCandidate Resume:\n{RESUME_TEXT}\n" if RESUME_TEXT else ""
 
     prompt = f"""
-You are a {req.role} interviewer.
+You are a strict DSA coding interviewer.
 
+Role: {req.role}
 Difficulty: {req.difficulty}
 
 {resume_context}
@@ -73,27 +74,51 @@ Previous conversation:
 {req.history}
 
 STRICT RULES:
-- Ask ONLY ONE coding question
-- Must be solvable in a SINGLE code editor
-- DO NOT ask for multiple files
-- DO NOT ask for GitHub repo
-- DO NOT ask for project submission
-- Keep it practical and interview-focused
+- Ask ONLY 1 coding question
+- Must be DSA based (arrays, strings, hashmap, stack, recursion)
+- MUST be solvable in 15-20 minutes
+- MAX 80 words question
+- NO theory
+- NO system design
+- NO multi-file projects
+- NO GitHub / deployment tasks
 
-Return ONLY the question.
+RETURN ONLY JSON:
+
+{{
+  "question": "short problem statement",
+  "input_format": "clearly explain input",
+  "output_format": "expected output",
+  "example": "input/output example",
+  "constraints": "basic constraints"
+}}
 """
 
-    res = client.chat.completions.create(
-        model="llama3-8b-8192",
-        messages=[{"role": "user", "content": prompt}]
-    )
+    try:
+        res = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[{"role": "user", "content": prompt}]
+        )
 
-    return {
-        "question": res.choices[0].message.content.strip()
-    }
+        content = res.choices[0].message.content.strip()
+        content = content.replace("```json", "").replace("```", "").strip()
+
+        data = json.loads(content)
+
+    except:
+        # 🔥 FALLBACK SAFE QUESTION
+        data = {
+            "question": "Find the first non-repeating character in a string.",
+            "input_format": "A single string s",
+            "output_format": "Return the first non-repeating character or -1",
+            "example": "Input: 'aabccbd' → Output: 'd'",
+            "constraints": "1 <= len(s) <= 10^5"
+        }
+
+    return data
 
 
-# ---------- OLD EVALUATION (KEEP SAME) ----------
+# ---------- OLD EVALUATION ----------
 @app.post("/evaluate-answer")
 def evaluate_answer(req: AnswerRequest):
 
@@ -138,7 +163,7 @@ Return ONLY JSON:
 
 
 # =========================================================
-# 🚀 RUN CODE (WITH BASIC VALIDATION)
+# 🚀 RUN CODE (UNCHANGED - GOOD)
 # =========================================================
 @app.post("/run-code")
 def run_code(req: CodeRequest):
@@ -193,12 +218,11 @@ def run_code(req: CodeRequest):
 
 
 # =========================================================
-# 🚀 PRO MAX EVALUATION (REALISTIC FIXED VERSION)
+# 🚀 PRO EVALUATION (MINOR BOOST FIX)
 # =========================================================
 @app.post("/evaluate-answer-pro")
 def evaluate_answer_pro(req: AnswerRequest):
 
-    # ❌ EMPTY CODE CHECK
     if not req.code.strip():
         return {
             "final_score": 0,
@@ -209,12 +233,8 @@ def evaluate_answer_pro(req: AnswerRequest):
             "improved_solution": "Write a valid solution first"
         }
 
-    resume_context = f"\nCandidate Resume:\n{RESUME_TEXT}\n" if RESUME_TEXT else ""
-
     prompt = f"""
 You are a strict coding interviewer.
-
-{resume_context}
 
 Question:
 {req.question}
@@ -223,12 +243,11 @@ Candidate Code:
 {req.code}
 
 Evaluate on:
-- correctness
-- edge cases
-- time complexity
-- code quality
+- correctness (0-100)
+- edge cases (0-100)
+- time complexity (0-100)
 
-Return ONLY JSON:
+RETURN ONLY JSON:
 {{
   "logic_score": number,
   "edge_case_score": number,
@@ -259,14 +278,12 @@ Return ONLY JSON:
             "feedback": "Evaluation failed partially"
         }
 
-    # 🎯 REALISTIC SCORE
     final_score = int(
         (data["logic_score"] * 0.5) +
         (data["edge_case_score"] * 0.3) +
         (data["complexity_score"] * 0.2)
     )
 
-    # 🎯 CONTROLLED TEST CASES (NOT RANDOM)
     passed_tests = 0 if final_score < 40 else min(5, int(final_score / 20))
 
     return {
