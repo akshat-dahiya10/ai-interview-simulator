@@ -56,13 +56,12 @@ export default function CodingRound({ question, onExit }: Props) {
       setOutput(data.output || "No output");
 
       // ================= EVALUATE CODE =================
-      const evalRes = await fetch("/api/evaluate-answer", {
+      const evalRes = await fetch("/api/evaluate-answer-pro", {  // ✅ FIXED API
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: question || "Coding Problem",
-          answer: code,
-          language,
+          code: code, // ✅ FIXED FIELD
         }),
       });
 
@@ -70,15 +69,18 @@ export default function CodingRound({ question, onExit }: Props) {
 
       console.log("Eval response:", evalData);
 
-      // ✅ REAL SCORE FROM BACKEND ONLY
+      // ✅ SCORE
       if (typeof evalData.score === "number") {
         setScore(evalData.score);
       } else {
         setScore(0);
       }
 
-      // ✅ REAL TEST CASES (backend should send this)
-      if (evalData.passed_tests && evalData.total_tests) {
+      // ✅ TEST CASES
+      if (
+        typeof evalData.passed_tests === "number" &&
+        typeof evalData.total_tests === "number"
+      ) {
         setHiddenTests(
           `${evalData.passed_tests}/${evalData.total_tests} test cases passed`
         );
