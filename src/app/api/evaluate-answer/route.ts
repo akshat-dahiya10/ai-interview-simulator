@@ -5,14 +5,13 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const res = await fetch(
-      "https://ai-interview-simulator-production-10.up.railway.app/evaluate-answer-pro", // ✅ FIXED ENDPOINT
+      "https://ai-interview-simulator-production-10.up.railway.app/evaluate-answer-pro",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
-
         signal: AbortSignal.timeout(15000),
       }
     );
@@ -33,46 +32,32 @@ export async function POST(req: Request) {
 
     const data = await res.json();
 
-    // 🧠 NORMALIZED RESPONSE
+    // 🧠 ✅ FIXED NORMALIZATION
     const normalized = {
       success: true,
 
-      // ✅ SCORE
+      // 🔥 MAIN FIX (IMPORTANT)
       score:
+        data?.final_score ??   // ✅ THIS WAS MISSING
         data?.score ??
-        data?.result?.score ??
-        data?.evaluation?.score ??
         0,
 
-      // ✅ FEEDBACK
-      feedback:
-        data?.feedback ??
-        data?.result?.feedback ??
-        data?.evaluation?.feedback ??
-        "",
+      // 🔥 SHOW OUT OF 5 (UI FRIENDLY)
+      score_out_of_5: data?.final_score
+        ? Math.round(data.final_score / 20)
+        : 0,
 
-      suggestion:
-        data?.suggestion ??
-        data?.result?.suggestion ??
-        data?.retry_suggestion ??
-        "",
+      feedback: data?.feedback ?? "",
 
+      // 🔥 FIXED FIELD NAME
       improved_answer:
+        data?.improved_solution ??
         data?.improved_answer ??
-        data?.result?.improved_answer ??
         "",
 
-      // ✅ FIXED TEST CASE FIELDS (IMPORTANT)
-      passed_tests:
-        data?.passed_tests ??
-        data?.hidden_tests_passed ??
-        data?.result?.passed_tests ??
-        null,
-
-      total_tests:
-        data?.total_tests ??
-        data?.result?.total_tests ??
-        null,
+      // ❌ REMOVE CONFUSING TEST CASE LOGIC (OPTIONAL CLEAN)
+      passed_tests: data?.passed_tests ?? null,
+      total_tests: data?.total_tests ?? null,
 
       raw: data,
     };
