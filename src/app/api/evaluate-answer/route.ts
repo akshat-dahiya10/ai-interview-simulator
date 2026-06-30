@@ -32,30 +32,25 @@ export async function POST(req: Request) {
 
     const data = await res.json();
 
-    // 🧠 ✅ FIXED NORMALIZATION
     const normalized = {
       success: true,
 
-      // 🔥 MAIN FIX (IMPORTANT)
       score:
-        data?.final_score ??   // ✅ THIS WAS MISSING
+        data?.final_score ??   
         data?.score ??
         0,
 
-      // 🔥 SHOW OUT OF 5 (UI FRIENDLY)
       score_out_of_5: data?.final_score
         ? Math.round(data.final_score / 20)
         : 0,
 
       feedback: data?.feedback ?? "",
 
-      // 🔥 FIXED FIELD NAME
       improved_answer:
         data?.improved_solution ??
         data?.improved_answer ??
         "",
 
-      // ❌ REMOVE CONFUSING TEST CASE LOGIC (OPTIONAL CLEAN)
       passed_tests: data?.passed_tests ?? null,
       total_tests: data?.total_tests ?? null,
 
